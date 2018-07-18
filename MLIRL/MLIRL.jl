@@ -2,6 +2,7 @@ include("reward.jl")
 include("utilities/gridworld.jl")
 include("utilities/policy.jl")
 
+
 function calQᵣ(mdp, r, β = 0.5)
     states = ordered_states(mdp)
 
@@ -64,6 +65,7 @@ end
 """
     Given an action, generates the SxS probability transition matrix Pₐ
 """
+
 function a2transition(mdp, a)
     states = ordered_states(mdp)
     n_states = size(states,1)-1
@@ -85,7 +87,10 @@ function a2transition(mdp, a)
     Pₐ
 end
 
-
+"""
+    Calculates inv(I-γPₚᵢ), where Pₚᵢ is the matrix of transition probabilities
+    of size SxS
+"""
 function calInvTransition(mdp, πᵦ, γ)
     n_states = size(πᵦ,1)
     I = eye(n_states)
@@ -93,7 +98,65 @@ function calInvTransition(mdp, πᵦ, γ)
     inv( I-γ*Pₚᵢ )
 end
 
-function MLIRL(mdp, ϕ, trajectories, iterations, learning_rate; ground_policy = nothing)
+"""
+    Currently unused
+"""
+function caldQₖ!(dQₖ, mdp, ϕ, invT, Pₐ, πᵦ, k)
+    states = ordered_states(mdp)
+    πₐ = zeros(size(states,1)-1)
+
+    # π "marginal"
+    for s in states[1:end-1]
+        si      = state_index(mdp, s)
+        πₐ[si]  = sum( πᵦ[si,:] ) * ϕ[si,k]
+    end
+
+    # dQ for each action
+    for a in actions(mdp)
+        ai = action_index(mdp,a)
+        dQₖ[:,ai] = ϕ[:,k] + mdp.discount_factor * Pₐ[ai] * invT * πₐ
+    end
+end
+
+
+"""
+    (proportional) Likelihood function for a single state action
+    Normally should have normalisiation, but not important when calculating ∇𝓛
+"""
+state_action_lh(πᵦ, s,a) = πᵦ[s,a]
+
+
+"""
+    Calculates the log likelihood given a Q-value
+"""
+function log_likelihood(mdp::GridWorld, Q::Array{<:AbstractFloat,2}, trajectories::Array{<:MDPHistory})
+    llh = 0.
+    BoltzmannQ = Q .- log.(sum(exp.(Q),2))
+
+    for (i,trajectory) in enumerate(trajectories)
+        normalising = size(trajectory.state_hist,1)-1
+        for (i,state) in enumerate(trajectory.state_hist[1:end-1])
+            s = state_index(mdp, state)
+            a = action_index(mdp, trajectory.action_hist[i])
+            llh += BoltzmannQ[s,a] / normalising
+        end
+    end
+    llh
+end
+
+
+
+"""
+    Executes a maximum likelihood inverse reinforcement learning
+    mdp:            the problem
+    ϕ:              operator to features space
+    trajectories:   experts' trajectories
+    iterations:     number of iterations to run for
+    α:              learning rate
+    β:              confidence parameter
+"""
+function MLIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_policy = nothing, verbose=true)
+
     srand(1)
     θ = sample(RewardFunction, size(ϕ,2))
     γ = mdp.discount_factor
@@ -105,84 +168,90 @@ function MLIRL(mdp, ϕ, trajectories, iterations, learning_rate; ground_policy =
 
     EVD = []
 
-    if ground_policy !== nothing
+    if verbose && ground_policy !== nothing
         v = policy_evaluation(mdp, ground_policy)
     end
 
-
-    β = 0.5
     for t in 1:iterations
+        tic()
         # π, Qᵣ   = calQᵣ(mdp, θ)
         π  = solve_mdp(mdp, θ)
         πᵦ = calπᵦ(mdp, π.qmat, β)
 
         # Log EVD
-        if ground_policy !== nothing
+        if verbose && ground_policy !== nothing
+            tic()
             # Need to change this to account for features
             πᵣ = solve_mdp(mdp, θ)
             vᵣ = policy_evaluation(mdp, πᵣ)
             push!(EVD, norm(v-vᵣ))
+            elapsed = toq()
         end
 
 
         invT = calInvTransition(mdp, πᵦ, γ)
         actions_i = action_index.(mdp, actions(mdp))
         dQ = zeros(n_states, n_actions)
+        ∇𝓛 = SharedArray{Float64,1}(zeros(n_features))
 
-        ∇𝓛 = zeros(n_features)
+        # Precpmputes transition matrix for all actions
+        # (independent of features)
+        Pₐ = a2transition.(mdp,actions(mdp))
 
+
+        # Calculates gradient per feature
         for k in 1:n_features
+            dQₖ = zeros( n_states, n_actions )
+            caldQₖ!(dQₖ, mdp, ϕ, invT, Pₐ, πᵦ, k)
 
-            dQ = zeros( n_states, n_actions )
-            πₐ = zeros(size(states,1)-1)
+            # dQ = zeros( n_states, n_actions )
+            # πₐ = zeros(size(states,1)-1)
+            #
+            # # π "marginal"
+            # for s in states[1:end-1]
+            #     si      = state_index(mdp, s)
+            #     πₐ[si]  = sum( πᵦ[si,:] ) * ϕ[si,k]
+            # end
+            #
+            # # dQ for each action
+            # for a in actions(mdp)
+            #     ai = action_index(mdp,a)
+            #     dQ[:,ai] = ϕ[:,k] + γ * Pₐ[ai] * invT * πₐ
+            # end
+            #
+            # k==1 ? println(norm(dQ-dQₖ)) : nothing
 
-            # π "marginal"
-            for s in states[1:end-1]
-                si      = state_index(mdp, s)
-                πₐ[si]  = sum( πᵦ[si,:] ) * ϕ[si,k]
-            end
-
-            # dQ for each action
-            for a in actions(mdp)
-                Pₐ = a2transition(mdp, a)
-                ai = action_index(mdp,a)
-                dQ[:,ai] = ϕ[:,k] + γ * Pₐ * invT * πₐ
-            end
-
+            # Calculates total gradient over trajectories
             for (m,trajectory) in enumerate(trajectories)
                 for (h,state) in enumerate(trajectory.state_hist[1:end-1])
                     sₕ = state_index(mdp, state)
                     aₕ = action_index(mdp, trajectory.action_hist[h])
 
-                    # let sₕ, aₕ be current state, action
-                    dl_dθₖ = β * ( dQ[sₕ,aₕ] - sum( [ lh(πᵦ,sₕ,ai⁻) * dQ[sₕ,ai⁻] for ai⁻ in actions_i ] ) )
+                    dl_dθₖ = β * ( dQₖ[sₕ,aₕ] - sum( [ state_action_lh(πᵦ,sₕ,ai⁻) * dQₖ[sₕ,ai⁻] for ai⁻ in actions_i ] ) )
                     ∇𝓛[k] += dl_dθₖ
                 end
             end
         end
-        θ += ∇𝓛
-        # ∇Q = cal∇Q(ϕ)
+        θ += α * ∇𝓛
+        # θ.values /= maximum(θ.values)
+        elapsed = toq()
+
+        verbose ? println("Iteration took $elapsed seconds") : nothing
     end
-    EVD
+
+    # Log EVD
+    if verbose && ground_policy !== nothing
+        # Need to change this to account for features
+        πᵣ = solve_mdp(mdp, θ)
+        vᵣ = policy_evaluation(mdp, πᵣ)
+        push!(EVD, norm(v-vᵣ))
+        println("Final EVD: $(EVD[end])")
+    end
+
+    θ, EVD
 end
 
-lh(πᵦ, s,a) = πᵦ[s,a]
 
-mdp, policy = generate_gridworld(10,10,γ=0.9)
-trajectories = generate_trajectories(mdp, policy, 50)
-ϕ = eye(100)
-τ = 0.1
-
-transition(mdp, GridWorldState(1,1), :up)
-
-Pₐ = a2transition(mdp, :up)
-
-state_index(mdp, GridWorldState(4,2))
-
-EVD = MLIRL(mdp, ϕ, trajectories, 50, τ; ground_policy = policy)
-
-using Plots
-Plots.plot(EVD)
 
 # i2s ✓
 # π2transition ✓

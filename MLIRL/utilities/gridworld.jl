@@ -144,3 +144,19 @@ end
     Index to state coordinates
 """
 i2s(mdp, index) = ind2sub((mdp.size_x, mdp.size_y), index)
+
+"""
+    Tranforms grid world reward states into matrix
+"""
+function rewards_matrix(mdp::GridWorld)
+    reward_matrix = zeros(mdp.size_x,mdp.size_y)
+    for i in 1:size(mdp.reward_states,1)
+        x = mdp.reward_states[i].x
+        y = mdp.reward_states[i].y
+
+        r = mdp.reward_values[i]
+
+        reward_matrix[y,x] = r
+    end
+    reward_matrix
+end
