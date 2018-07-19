@@ -20,15 +20,20 @@ function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
             ∑π = 0.
             gw_state = GridWorldState(ind2sub(sizes, s)...)
 
-            # Boltzmann
+            #### NOTE ####
+            # Tested all three policies over a single example, it appears
+            # that boltzmann definitely does not work well, with EVD
+            # increasing, and ϵ-greedy and greedy perform very similarly
+            # and require more tests to check if one is better than the other
+
+            ####    Boltzmann   ####
             # πᵦ = exp.(π.qmat[s,:]) / sum(exp.(π.qmat[s,:]))
-            # ϵ-greedy
-            # ϵ = 0.05
-            # πᵦ = ones(4)*ϵ/3
-            # πᵦ[indmax(π.qmat[s,:])] = 1-ϵ
-            # Greedy
-            πᵦ = zeros(4)
-            πᵦ[indmax(π.qmat[s,:])] = 1.
+            ####    ϵ-greedy    ####
+            πᵦ = ones(4)*ϵ/3
+            πᵦ[indmax(π.qmat[s,:])] = 1-ϵ
+            #####   Greedy      ####
+            # πᵦ = zeros(4)
+            # πᵦ[indmax(π.qmat[s,:])] = 1.
 
             # for each possible action
             nbs = state_neighbours(mdp,s)
@@ -40,16 +45,6 @@ function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
                 # Given an action, for each possible neighbour
                 for (i,nb) in enumerate(state_neighbours(mdp, s))
                     r, Pₛₛ = 0., 0.
-                    # if nb == s
-                    #     r = -1.
-                    # else
-                    #     GridWorldState(ind2sub(sizes, nb)...)
-                    #     index = find(mdp.reward_states .== nb_state)
-                    #
-                    #     if !isempty(index)
-                    #         r = mdp.reward_values[index[1]]
-                    #     end
-                    # end
 
                     r = reward(mdp, gw_state, action)
 
@@ -69,4 +64,38 @@ function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
         end
     end
     V
+end
+
+"""
+    Calculates Boltzmann policy given a Q-matrix and β (inverse of temperature)
+"""
+function calπᵦ(mdp, Q, β=0.5)
+    states = ordered_states(mdp)
+    πᵣ = zeros(size(states,1)-1, size(actions(mdp),1))
+
+    for s in states[1:end-1]
+        si = state_index(mdp,s)
+        softmax_denom = sum(exp.(β*Q[si,:]))
+        for a in actions(mdp)
+            ai = action_index(mdp,a)
+            πᵣ[si,ai] = exp(β*Q[si,ai]) / softmax_denom
+        end
+    end
+    πᵣ
+end
+
+"""
+    Returns the transition matrix of a policy
+"""
+function π2transition(mdp, π)
+    n_states = size(π,1)
+    T = zeros(n_states, n_states)
+
+    for s in 1:n_states
+        nbs = state_neighbours(mdp, s)
+        for (i,nb) in enumerate(nbs)
+            T[s,nb] = π[s,i]
+        end
+    end
+    T
 end

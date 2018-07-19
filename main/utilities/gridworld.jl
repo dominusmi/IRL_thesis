@@ -160,3 +160,47 @@ function rewards_matrix(mdp::GridWorld)
     end
     reward_matrix
 end
+
+
+"""
+    Given an action, generates the SxS probability transition matrix Pₐ
+"""
+function a2transition(mdp, a)
+    states = ordered_states(mdp)
+    n_states = size(states,1)-1
+    Pₐ = zeros(n_states, n_states)
+
+    for s in states[1:end-1]
+        si = state_index(mdp,s)
+        states⁻ = transition(mdp, s, a)
+        states⁻, p = states⁻.vals, states⁻.probs
+        for (j,s⁻) in enumerate(states⁻)
+            if isterminal(mdp, s⁻)
+                continue
+            end
+            s⁻ = POMDPModels.inbounds(mdp, s⁻) ? s⁻ : s
+            si⁻ = state_index(mdp, s⁻)
+            Pₐ[si, si⁻] = p[j]
+        end
+    end
+    Pₐ
+end
+
+
+"""
+    Calculates the log likelihood given a Q-value
+"""
+function log_likelihood(mdp::GridWorld, Q::Array{<:AbstractFloat,2}, trajectories::Array{<:MDPHistory})
+    llh = 0.
+    BoltzmannQ = Q .- log.(sum(exp.(Q),2))
+
+    for (i,trajectory) in enumerate(trajectories)
+        normalising = size(trajectory.state_hist,1)-1
+        for (i,state) in enumerate(trajectory.state_hist[1:end-1])
+            s = state_index(mdp, state)
+            a = action_index(mdp, trajectory.action_hist[i])
+            llh += BoltzmannQ[s,a] / normalising
+        end
+    end
+    llh
+end
