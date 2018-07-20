@@ -75,9 +75,9 @@ end
     κ:      concentration for DPM
     η:      "confidence" of trajectories (Boltzmann temperature)
 """
-function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
+function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Globals)
     # Permute trajectory and clusters to avoid any bias
-    trajectoryₚ = randperm(size(χ,1))
+    trajectoryₚ = randperm(size(glb.χ,1))
 
     # Sample new clusters
     for m in trajectoryₚ
@@ -88,7 +88,7 @@ function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
 
         if cₘ⁻ == clusters.K+1
             # If new cluster, sample new reward
-            r⁻ = sample(RewardFunction, mdp.size_x * mdp.size_y)
+            r⁻ = sample(RewardFunction, glb.n_features)
             new_cluster = true
         else
             # Otherwise "load" current reward function
@@ -97,8 +97,8 @@ function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
 
         # Calculate likelihood
         # TODO: record old likelihood so don't have to recalculate
-        𝓛      = trajectory_likelihood(mdp, χ[m], clusters.rewards[cₘ].π; η=η)
-        𝓛⁻     = trajectory_likelihood(mdp, χ[m], r⁻; η=η)
+        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].π; η=glb.β)
+        𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻; η=glb.β)
         accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
 
         # Update if accepted
@@ -109,13 +109,12 @@ function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
             # Update cluster and reward assignements
             if new_cluster
                 # Add new cluster
+                update_reward!(r⁻, mdp, [glb.χ[m]], glb)
                 push!(clusters.rewards, r⁻)
                 push!(clusters.N,1)
                 clusters.K += 1
                 clusters.N[cₘ] -= 1
                 clusters.assignements[m] = cₘ⁻
-
-                # update_reward!()
             else
                 # Update clusters to new assignement
                 clusters.N[cₘ] -= 1

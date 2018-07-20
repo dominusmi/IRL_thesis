@@ -12,19 +12,19 @@ end
 """
     Currently unused
 """
-function caldQₖ!(dQₖ, mdp, ϕ, invT, Pₐ, πᵦ, k)
+function caldQₖ!(dQₖ, mdp, invT, πᵦ, k, glb)
     states = ordered_states(mdp)
     πₐ = zeros(size(states,1)-1)
 
     # π "marginal"
     for s in states[1:end-1]
         si      = state_index(mdp, s)
-        πₐ[si]  = sum( πᵦ[si,:] ) * ϕ[si,k]
+        πₐ[si]  = sum( πᵦ[si,:] ) * glb.ϕ[si,k]
     end
 
     # dQ for each action
     for a in actions(mdp)
         ai = action_index(mdp,a)
-        dQₖ[:,ai] = ϕ[:,k] + mdp.discount_factor * Pₐ[ai] * invT * πₐ
+        dQₖ[:,ai] = glb.ϕ[:,k] + mdp.discount_factor * glb.Pₐ[ai] * invT * πₐ
     end
 end

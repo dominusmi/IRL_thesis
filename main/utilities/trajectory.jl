@@ -30,7 +30,7 @@ end
 """
     Trajectory likelihood given a policy
 """
-function trajectory_likelihood(real_mdp::GridWorld, trajectory::MDPHistory, π::Policy; η::Number = 1.0)
+function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, π::Policy; η::Number = 1.0)
     # Calculate likelihood trajectory
     likelihood = 0.0
     for state in trajectory.state_hist[1:end-2]

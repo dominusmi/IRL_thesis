@@ -51,7 +51,7 @@ function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
                     if i == a
                         Pₛₛ = η
                     else
-                        Pₛₛ = (1-η)/(n_actions(mdp)-1)
+                        Pₛₛ = (1-η)/(POMDPs.n_actions(mdp)-1)
                     end
                     ∑s += Pₛₛ*( r + mdp.discount_factor * V[nb] )
                 end
@@ -69,16 +69,16 @@ end
 """
     Calculates Boltzmann policy given a Q-matrix and β (inverse of temperature)
 """
-function calπᵦ(mdp, Q, β=0.5)
+function calπᵦ(mdp, Q, glb)
     states = ordered_states(mdp)
     πᵣ = zeros(size(states,1)-1, size(actions(mdp),1))
 
     for s in states[1:end-1]
         si = state_index(mdp,s)
-        softmax_denom = sum(exp.(β*Q[si,:]))
+        softmax_denom = sum(exp.(glb.β*Q[si,:]))
         for a in actions(mdp)
             ai = action_index(mdp,a)
-            πᵣ[si,ai] = exp(β*Q[si,ai]) / softmax_denom
+            πᵣ[si,ai] = exp(glb.β*Q[si,ai]) / softmax_denom
         end
     end
     πᵣ

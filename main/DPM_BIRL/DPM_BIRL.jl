@@ -1,8 +1,24 @@
+module DPMBIRL
+
+export DPMBIRL, generate_gridworld, generate_trajectories
+
 using POMDPs
 using POMDPModels
 using Distributions
 using POMDPToolbox
 
+immutable Globals
+    n_states::Int64
+    n_actions::Int64
+    n_features::Int64
+    n_trajectories::Int64
+    actions_i::Array{Int64}
+    β::Float64
+    γ::Float64
+    Pₐ::Array{Array{Float64,2},1}
+    χ::Array{MDPHistory}
+    ϕ::Array{Float64,2}
+end
 
 include("../reward.jl")
 include("../cluster.jl")
@@ -11,15 +27,18 @@ include("../utilities/policy.jl")
 include("../utilities/general.jl")
 include("../utilities/trajectory.jl")
 
-immutable Constants
-    n_states::Int64
-    n_actions::Int64
-    n_features::Int64
-    n_trajectories::Int64
-    actions_i::Array{Int64}
-    β::Float64
-    Pₐ::Array{Array{Float64,2},1}
-end
+# n_states::Int64
+# n_actions::Int64
+# n_features::Int64
+# n_trajectories::Int64
+# actions_i::Array{Int64}
+# β::Float64
+# γ::Float64
+# Pₐ::Array{Array{Float64,2},1}
+# χ::Array{MDPHistory}
+# ϕ::Array{Float64,2}
+
+
 
 """
     (proportional) Likelihood function for a single state action
@@ -62,7 +81,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     Pₐ = a2transition.(mdp,actions(mdp))
     actions_i = action_index.(mdp, actions(mdp))
 
-    cst = Constants(n_states, n_actions, n_features, n_trajectories, actions_i, Pₐ)
+    glb = Globals(n_states, n_actions, n_features, n_trajectories, actions_i, β, γ, Pₐ, χ, ϕ)
 
     #### Initialisation ####
     # Initialise clusters
@@ -72,8 +91,8 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
 
 
     # Prepare reward functions
-    θs = [sample(RewardFunction, mdp.size_x*mdp.size_y) for i in 1:K]
-    for θ in θs
+    θs = [sample(RewardFunction, n_features) for i in 1:K]
+    for (k,θ) in enumerate(θs)
     #     # Solve mdp with current reward
     #     θ.π  = solve_mdp(mdp, θ)
     #     # Find Boltzmann policy
@@ -83,25 +102,24 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     #     θ.invT = calInvTransition(mdp, θ.πᵦ, γ)
     #     # Calculates value and gradient of trajectory likelihood
     #     θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, ϕ, θ.invT, Pₐ, θ.πᵦ, β, χ, n_states, n_actions, n_features, actions_i)
-        update_reward!(θ, ϕ, Pₐ, β, χ, n_states, n_actions, n_features, actions_i)
+        assigned2cluster = (assignements .== k)
+        χₖ = χ[assigned2cluster]
+        update_reward!(θ, mdp, χₖ, glb)
     end
 
     𝓛_traj          = ones(n_trajectories)*1e-5
     c               = Clusters(K, assignements, N, 𝓛_traj, θs)
 
-    update_clusters!(c, χ, κ, β)
+    update_clusters!(c, mdp, κ, glb)
 
     log_assignements = []
 
-    for t in 1:30
+    for t in 1:iterations
         tic()
 
-        push!(log_assignements, c.N)
+        push!(log_assignements, copy(c.N))
+        update_clusters!(c, mdp, κ, glb)
 
-        changed = update_clusters!(c, χ, κ, β)
-        for θ in c.rewards[changed]
-            update_reward!(θ, ϕ, Pₐ, β, χ, n_states, n_actions, n_features, actions_i)
-        end
 
         for (k, θ) in enumerate(c.rewards)
 
@@ -114,13 +132,13 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
 
             # Solve everything for potential new reward
             π⁻  = solve_mdp(mdp, θ⁻)
-            πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, β)
+            πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, glb)
             invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
 
             # Calculate likelihood and gradient
             assigned2cluster = (c.assignements .== k)
             χₖ = χ[assigned2cluster]
-            𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, ϕ, invT⁻, Pₐ, πᵦ⁻, β, χₖ, n_states, n_actions, n_features, actions_i)
+            𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
 
             # Do the update
             if update == :ML
@@ -166,12 +184,12 @@ end
 
 
 
-function cal∇𝓛(mdp, ϕ, invT, Pₐ, πᵦ, β, χ, n_states, n_actions, n_features, actions_i)
+function cal∇𝓛(mdp, invT, πᵦ, χ, glb::Globals)
     𝓛  = 0.
-    ∇𝓛 = zeros(n_features)
-    for k in 1:n_features
-        dQₖ = zeros( n_states, n_actions )
-        caldQₖ!(dQₖ, mdp, ϕ, invT, Pₐ, πᵦ, k)
+    ∇𝓛 = zeros(glb.n_features)
+    for k in 1:glb.n_features
+        dQₖ = zeros( glb.n_states, glb.n_actions )
+        caldQₖ!(dQₖ, mdp, invT, πᵦ, k, glb)
 
         # Calculates total gradient over trajectories
         for (m,trajectory) in enumerate(χ)
@@ -181,10 +199,13 @@ function cal∇𝓛(mdp, ϕ, invT, Pₐ, πᵦ, β, χ, n_states, n_actions, n_f
 
                 𝓛 += state_action_lh(πᵦ,sₕ,aₕ)
 
-                dl_dθₖ = β * ( dQₖ[sₕ,aₕ] - sum( [ state_action_lh(πᵦ,sₕ,ai⁻) * dQₖ[sₕ,ai⁻] for ai⁻ in actions_i ] ) )
+                dl_dθₖ = glb.β * ( dQₖ[sₕ,aₕ] - sum( [ state_action_lh(πᵦ,sₕ,ai⁻) * dQₖ[sₕ,ai⁻] for ai⁻ in glb.actions_i ] ) )
                 ∇𝓛[k] += dl_dθₖ
             end
         end
     end
     𝓛, ∇𝓛
+end
+
+# End module
 end
