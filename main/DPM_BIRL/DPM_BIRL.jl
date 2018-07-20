@@ -74,14 +74,15 @@ function DPM_BIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_poli
         invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
         𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, ϕ, invT⁻, Pₐ, πᵦ⁻, β, n_states, n_actions, n_features, actions_i)
 
-
-        # TODO: Do MH update step
+        # Do the update
         if update == :gradient
             # We simply follow the gradient
             θ = θ⁻
             𝓛, ∇𝓛, invT, π, πᵦ = 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
         elseif update == :langevin || update == :langevin_rand
             # Use result from Choi
+            𝓛 += sum(pdf.(Normal(0,1), θ.values))
+            𝓛⁻ += sum(pdf.(Normal(0,1), θ⁻.values))
             p =  𝓛⁻ / 𝓛 * proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ) / proposal_distribution(θ, θ⁻, ∇𝓛, τ)
             @show p
             if rand() > p
@@ -89,7 +90,6 @@ function DPM_BIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_poli
                 𝓛, ∇𝓛, invT, π, πᵦ = 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
             end
         end
-        # θ = θ⁻
 
         elapsed = toq()
 
@@ -122,9 +122,8 @@ function cal∇𝓛(mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_actions, n_featu
     for k in 1:n_features
         dQₖ = zeros( n_states, n_actions )
         caldQₖ!(dQₖ, mdp, ϕ, invT, Pₐ, πᵦ, k)
+
         # Calculates total gradient over trajectories
-
-
         for (m,trajectory) in enumerate(trajectories)
             for (h,state) in enumerate(trajectory.state_hist[1:end-1])
                 sₕ = state_index(mdp, state)
@@ -137,5 +136,5 @@ function cal∇𝓛(mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_actions, n_featu
             end
         end
     end
-    𝓛,∇𝓛
+    𝓛, ∇𝓛
 end

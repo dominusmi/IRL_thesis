@@ -7,12 +7,16 @@ trajectories = generate_trajectories(mdp, policy, 50)
 learning_rate = 0.1
 confidence = 1.0
 
-θ, EVD = DPM_BIRL(mdp, ϕ, trajectories, 30; α=learning_rate, β=confidence, ground_policy = policy, verbose = true, update = :gradient)
+θ, EVD = DPM_BIRL(mdp, ϕ, trajectories, 30; α=learning_rate, β=confidence, ground_policy = policy, verbose = true, update = :langevin)
 
 
 using Plots
+plotlyjs()
 Plots.plot(EVD)
 
 rewards = rewards_matrix(mdp)
 heatmap(rewards')
 heatmap(reshape(θ.values, (10,10)))
+
+
+surface(rand(10), rand(10), rand(10))
