@@ -54,17 +54,15 @@ function DPM_BIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_poli
 
     # Prepare variables for gradient
     invT = calInvTransition(mdp, πᵦ, γ)
-    ∇𝓛 = zeros(n_features)
-    𝓛 = 0.
-    # Calculates gradient of trajectory likelihood
-    𝓛 = cal∇𝓛!(∇𝓛, mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_actions, n_features, actions_i)
+    # Calculates value and gradient of trajectory likelihood
+    𝓛, ∇𝓛 = cal∇𝓛(mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_actions, n_features, actions_i)
 
     for t in 1:iterations
         tic()
 
         # Find potential new reward
         if update == :langevin_rand
-            θ⁻ = θ + α * ∇𝓛 + τ * rand(Normal(0,1), n_features)
+            θ⁻ = θ + α * ∇𝓛 + α * rand(Normal(0,1), n_features)
         else
             θ⁻ = θ + α * ∇𝓛
         end
@@ -74,8 +72,7 @@ function DPM_BIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_poli
         πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, β)
 
         invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
-        ∇𝓛⁻ = zeros(n_features)
-        𝓛⁻ = cal∇𝓛!(∇𝓛⁻, mdp, ϕ, invT⁻, Pₐ, πᵦ⁻, β, n_states, n_actions, n_features, actions_i)
+        𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, ϕ, invT⁻, Pₐ, πᵦ⁻, β, n_states, n_actions, n_features, actions_i)
 
 
         # TODO: Do MH update step
@@ -119,8 +116,9 @@ function DPM_BIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_poli
     θ, EVD
 end
 
-function cal∇𝓛!(∇𝓛, mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_actions, n_features, actions_i)
+function cal∇𝓛(mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_actions, n_features, actions_i)
     𝓛  = 0.
+    ∇𝓛 = zeros(n_features)
     for k in 1:n_features
         dQₖ = zeros( n_states, n_actions )
         caldQₖ!(dQₖ, mdp, ϕ, invT, Pₐ, πᵦ, k)
@@ -139,5 +137,5 @@ function cal∇𝓛!(∇𝓛, mdp, ϕ, invT, Pₐ, πᵦ, β, n_states, n_action
             end
         end
     end
-    𝓛
+    𝓛,∇𝓛
 end
