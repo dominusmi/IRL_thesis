@@ -1,9 +1,3 @@
-using Plots
-using LaTeXStrings
-using POMDPs
-using POMDPModels
-using Distributions
-using POMDPToolbox
 using DiscreteValueIteration
 import Base.copy
 

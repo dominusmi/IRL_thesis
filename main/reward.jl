@@ -2,6 +2,12 @@ import Base.+, Base.-
 
 mutable struct RewardFunction
     values::Array{<:Number}
+    π::Policy
+    πᵦ::Array{<:AbstractFloat,2}
+    invT::Array{<:AbstractFloat,2}
+    𝓛::Float64
+    ∇𝓛::Array{<:AbstractFloat,1}
+    RewardFunction(values::Array{<:Number}) = new(values)
 end
 
 function +(r::RewardFunction, values::Array{<:AbstractFloat})
@@ -18,7 +24,6 @@ end
 function sample(::Type{RewardFunction}, features)
     RewardFunction(rand(Normal(0,1), features))
 end
-
 
 """
     Calculates proposal value of new reward
