@@ -83,7 +83,7 @@ function MLIRL(mdp, ϕ, trajectories, iterations; α=0.1, β=0.5, ground_policy 
 
         verbose ? println("Iteration took $elapsed seconds") : nothing
     end
-
+    
     # Log EVD
     if verbose && ground_policy !== nothing
         # Need to change this to account for features

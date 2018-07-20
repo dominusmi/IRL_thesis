@@ -27,5 +27,9 @@ function proposal_distribution(r₁::RewardFunction, r₂::RewardFunction, ∇lo
     D = size(r₁.values,1)
     g = r₁.values - r₂.values - 0.5*τ^2 * ∇logTarget
     g = inv(-2*τ^2) * norm(g)^2
-    g = inv( (2*π*τ^2)^(D/2) ) * exp(g)
+    # This is the correct calculation, but the initial constant cancels out
+    # g = inv( (2*π*τ^2)^(D/2) ) * exp(g)
+    # @show g
+    # exp(g)
+    g
 end
