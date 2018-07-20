@@ -1,5 +1,6 @@
 include("DPM_BIRL.jl")
 
+
 srand(1)
 mdp, policy = generate_gridworld(10,10,γ=0.9)
 χ = generate_trajectories(mdp, policy, 50)
@@ -7,7 +8,7 @@ mdp, policy = generate_gridworld(10,10,γ=0.9)
 learning_rate = 0.1
 confidence = 1.0
 
-θ, EVD = DPM_BIRL(mdp, ϕ, χ, 30; α=learning_rate, β=confidence, ground_policy = policy, verbose = true, update = :ML)
+c, EVD, log = DPM_BIRL(mdp, ϕ, χ, 30; α=learning_rate, β=confidence, ground_policy = policy, verbose = true, update = :ML)
 
 
 using Plots

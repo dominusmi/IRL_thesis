@@ -38,3 +38,16 @@ function proposal_distribution(r₁::RewardFunction, r₂::RewardFunction, ∇lo
     # exp(g)
     g
 end
+
+
+function update_reward!(θ::RewardFunction, ϕ, Pₐ, β, χ, n_states, n_actions, n_features, actions_i)
+    # Solve mdp with current reward
+    θ.π  = solve_mdp(mdp, θ)
+    # Find Boltzmann policy
+    θ.πᵦ = calπᵦ(mdp, θ.π.qmat, β)
+
+    # Prepare variables for gradient
+    θ.invT = calInvTransition(mdp, θ.πᵦ, γ)
+    # Calculates value and gradient of trajectory likelihood
+    θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, ϕ, θ.invT, Pₐ, θ.πᵦ, β, χ, n_states, n_actions, n_features, actions_i)
+end

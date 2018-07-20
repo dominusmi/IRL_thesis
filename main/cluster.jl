@@ -4,7 +4,7 @@ mutable struct Clusters
     K::Int64                        # Cluster index
     assignements::Array{<:Integer}  # cₘ in paper
     N::Array{<:Integer}             # Number of trajectories per cluster
-    𝓛::Array{<:AbstractFloat}       # Current likelihood of cluster given reward
+    𝓛ᵪ::Array{<:AbstractFloat}      # Trajectories likelihood
     rewards::Array{RewardFunction}  # Reward function
 end
 function Clusters(assignements)
@@ -96,6 +96,7 @@ function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
         end
 
         # Calculate likelihood
+        # TODO: record old likelihood so don't have to recalculate
         𝓛      = trajectory_likelihood(mdp, χ[m], clusters.rewards[cₘ].π; η=η)
         𝓛⁻     = trajectory_likelihood(mdp, χ[m], r⁻; η=η)
         accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
@@ -103,16 +104,18 @@ function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
         # Update if accepted
         if accept
             # Update likelihood of trajectory
-            clusters.𝓛[m] = 𝓛⁻
+            # clusters.𝓛[m] = 𝓛⁻
 
             # Update cluster and reward assignements
             if new_cluster
                 # Add new cluster
                 push!(clusters.rewards, r⁻)
-                push!(clusters.assignements, clusters.K+1)
                 push!(clusters.N,1)
                 clusters.K += 1
                 clusters.N[cₘ] -= 1
+                clusters.assignements[m] = cₘ⁻
+
+                # update_reward!()
             else
                 # Update clusters to new assignement
                 clusters.N[cₘ] -= 1
@@ -122,7 +125,7 @@ function update_clusters!(clusters::Clusters, χ::Array{MDPHistory}, κ, η)
         end
         # Remove empty clusters
         if (to_remove = findfirst(x->x==0, clusters.N))>0
-            remove!(clusters, to_remove)
+            deleteat!(clusters, to_remove)
         end
     end
 end
