@@ -45,7 +45,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     n_trajectories = size(χ,1)
 
     # Initialise random reward function
-    θ = sample(RewardFunction, n_features)
+    θs = [sample(RewardFunction, n_features) for i in 1:2]
 
     EVD = []
 
@@ -83,45 +83,48 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     #
     # update_clusters!(c, χ, κ, β)
 
-    # Solve mdp with current reward
-    θ.π  = solve_mdp(mdp, θ)
-    # Find Boltzmann policy
-    θ.πᵦ = calπᵦ(mdp, θ.π.qmat, β)
+    for θ in θs
+        # Solve mdp with current reward
+        θ.π  = solve_mdp(mdp, θ)
+        # Find Boltzmann policy
+        θ.πᵦ = calπᵦ(mdp, θ.π.qmat, β)
 
-    # Prepare variables for gradient
-    θ.invT = calInvTransition(mdp, θ.πᵦ, γ)
-    # Calculates value and gradient of trajectory likelihood
-    θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, ϕ, θ.invT, Pₐ, θ.πᵦ, β, χ, n_states, n_actions, n_features, actions_i)
+        # Prepare variables for gradient
+        θ.invT = calInvTransition(mdp, θ.πᵦ, γ)
+        # Calculates value and gradient of trajectory likelihood
+        θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, ϕ, θ.invT, Pₐ, θ.πᵦ, β, χ, n_states, n_actions, n_features, actions_i)
+    end
 
     for t in 1:30
         tic()
+        for θ in θs
+            # Find potential new reward
+            if update == :langevin_rand
+                θ⁻ = θ + α * ∇𝓛 + α * rand(Normal(0,1), n_features)
+            else
+                θ⁻ = θ + α * θ.∇𝓛
+            end
 
-        # Find potential new reward
-        if update == :langevin_rand
-            θ⁻ = θ + α * ∇𝓛 + α * rand(Normal(0,1), n_features)
-        else
-            θ⁻ = θ + α * θ.∇𝓛
-        end
+            # Solve everything for potential new reward
+            π⁻  = solve_mdp(mdp, θ⁻)
+            πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, β)
 
-        # Solve everything for potential new reward
-        π⁻  = solve_mdp(mdp, θ⁻)
-        πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, β)
+            invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
+            𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, ϕ, invT⁻, Pₐ, πᵦ⁻, β, χ, n_states, n_actions, n_features, actions_i)
 
-        invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
-        𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, ϕ, invT⁻, Pₐ, πᵦ⁻, β, χ, n_states, n_actions, n_features, actions_i)
-
-        # Do the update
-        if update == :ML
-            # We simply follow the gradient
-            θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
-        elseif update == :langevin || update == :langevin_rand
-            # Use result from Choi
-            𝓛 += sum(pdf.(Normal(0,1), θ.values))
-            𝓛⁻ += sum(pdf.(Normal(0,1), θ⁻.values))
-            p =  𝓛⁻ / 𝓛 * proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ) / proposal_distribution(θ, θ⁻, ∇𝓛, τ)
-            @show p
-            if rand() > p
+            # Do the update
+            if update == :ML
+                # We simply follow the gradient
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
+            elseif update == :langevin || update == :langevin_rand
+                # Use result from Choi
+                𝓛 += sum(pdf.(Normal(0,1), θ.values))
+                𝓛⁻ += sum(pdf.(Normal(0,1), θ⁻.values))
+                p =  𝓛⁻ / 𝓛 * proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ) / proposal_distribution(θ, θ⁻, ∇𝓛, τ)
+                @show p
+                if rand() > p
+                    θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
+                end
             end
         end
 
@@ -132,7 +135,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
             println("Iteration took $elapsed seconds")
             if ground_policy !== nothing
                 # Need to change this to account for features
-                vᵣ = policy_evaluation(mdp, θ.π)
+                vᵣ = policy_evaluation(mdp, θs[1].π)
                 push!(EVD, norm(v-vᵣ))
             end
         end
@@ -141,7 +144,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     # Log EVD
     if verbose && ground_policy !== nothing
         # Need to change this to account for features
-        πᵣ = solve_mdp(mdp, θ)
+        πᵣ = solve_mdp(mdp, θs[1])
         vᵣ = policy_evaluation(mdp, πᵣ)
         push!(EVD, norm(v-vᵣ))
         println("Final EVD: $(EVD[end])")
