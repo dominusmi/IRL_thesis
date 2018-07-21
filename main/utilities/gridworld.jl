@@ -5,11 +5,14 @@ manhattan(x,y) = sum(abs.(x-y))
 
 
 function generate_reward_states(x,y)
-    states = []
+
+    states = zeros(y,x)
+    terminals = []
 
     # Generate terminal
     tx, ty = rand(1:x), rand(1:y)
-    push!(states, (tx,ty,1.0))
+    push!(terminals, (tx,ty,1.0))
+    states[ty, tx] = 1.0
 
     # Generate negative
     n_bad = Int(round(0.25*x*y))
@@ -17,12 +20,12 @@ function generate_reward_states(x,y)
         while true
             bx,by = rand(1:x), rand(1:y)
             if (bx,by) !== (tx,ty)
-                push!(states, (bx,by,-0.5))
+                states[by, bx] = -0.5
                 break
             end
         end
     end
-    states
+    states, terminals
 end
 
 function solve_mdp(mdp::GridWorld)
@@ -34,19 +37,41 @@ end
 function generate_gridworld(size_x::Integer, size_y::Integer;
                             γ=0.9, boundary_penalty=-1.0, transitionₚ=1.0)
 
-    reward_states = generate_reward_states(size_x, size_y)
+    states, terminals = generate_reward_states(size_x, size_y)
+
+    all_states = reshape([GridWorldState(x,y) for x in 1:size_x, y in 1:size_y], size_x*size_y)
+    rewards = reshape([states[y,x] for x in 1:size_x, y in 1:size_y], size_x*size_y)
 
     mdp = GridWorld(size_x,                                                                 # size x
                     size_y,                                                                 # size y
-                    map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
-                    map(x->x[3], reward_states),                                            # Respective rewards
+                    # map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
+                    # map(x->x[3], reward_states),                                            # Respective rewards
+                    all_states,
+                    rewards,
                     boundary_penalty,                                                       # Boundary penalty
                     transitionₚ,                                                            # Transition probability
-                    Set([GridWorldState(x[1:2]...) for x in reward_states if x[3]>0]),      # Terminal states
+                    Set([GridWorldState(x[1:2]...) for x in terminals]),      # Terminal states
                     γ                                                                       # Discount factor γ
                 )
     mdp, solve_mdp(mdp)
 end
+
+# function generate_gridworld(size_x::Integer, size_y::Integer;
+#                             γ=0.9, boundary_penalty=-1.0, transitionₚ=1.0)
+#
+#     reward_states = generate_reward_states(size_x, size_y)
+#
+#     mdp = GridWorld(size_x,                                                                 # size x
+#                     size_y,                                                                 # size y
+#                     map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
+#                     map(x->x[3], reward_states),                                            # Respective rewards
+#                     boundary_penalty,                                                       # Boundary penalty
+#                     transitionₚ,                                                            # Transition probability
+#                     Set([GridWorldState(x[1:2]...) for x in reward_states if x[3]>0]),      # Terminal states
+#                     γ                                                                       # Discount factor γ
+#                 )
+#     mdp, solve_mdp(mdp)
+# end
 
 function copy(mdp::GridWorld)
     new_mdp = GridWorld(mdp.size_x,

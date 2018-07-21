@@ -27,17 +27,6 @@ include("../utilities/policy.jl")
 include("../utilities/general.jl")
 include("../utilities/trajectory.jl")
 
-# n_states::Int64
-# n_actions::Int64
-# n_features::Int64
-# n_trajectories::Int64
-# actions_i::Array{Int64}
-# β::Float64
-# γ::Float64
-# Pₐ::Array{Array{Float64,2},1}
-# χ::Array{MDPHistory}
-# ϕ::Array{Float64,2}
-
 
 
 """
@@ -81,12 +70,15 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     Pₐ = a2transition.(mdp,actions(mdp))
     actions_i = action_index.(mdp, actions(mdp))
 
-    glb = Globals(n_states, n_actions, n_features, n_trajectories, actions_i, β, γ, Pₐ, χ, ϕ)
+    const glb = Globals(n_states, n_actions, n_features, n_trajectories, actions_i, β, γ, Pₐ, χ, ϕ)
 
     #### Initialisation ####
     # Initialise clusters
+    # K = n_trajectories
     K = 1
-    assignements    = rand(1:K, n_trajectories)
+    assignements    = collect(1:n_trajectories)
+    # assignements    = rand(1:K, n_trajectories)
+    assignements = fill(1,n_trajectories)
     N               = map(x->sum(assignements .== x), 1:K)
 
 
@@ -112,17 +104,14 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
 
     update_clusters!(c, mdp, κ, glb)
 
-    log_assignements = []
+    log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [])
 
     for t in 1:iterations
         tic()
 
-        push!(log_assignements, copy(c.N))
         update_clusters!(c, mdp, κ, glb)
 
-
         for (k, θ) in enumerate(c.rewards)
-
             # Find potential new reward
             if update == :langevin_rand
                 θ⁻ = θ + α * ∇𝓛 + α * rand(Normal(0,1), n_features)
@@ -161,8 +150,17 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
         # Log EVD
         if verbose
             println("Iteration took $elapsed seconds")
+            push!(log[:assignements], copy(c.N))
+            push!(log[:likelihoods], map(x->x.𝓛, c.rewards))
+            push!(log[:rewards], c.rewards)
+
             if ground_policy !== nothing
-                # Need to change this to account for features
+                EVDs = []
+                for θ in c.rewards
+                    vᵣ = policy_evaluation(mdp, θ.π)
+                    push!(EVDs, norm(v-vᵣ))
+                end
+                push!(log[:EVDs], EVDs)
                 vᵣ = policy_evaluation(mdp, θs[1].π)
                 push!(EVD, norm(v-vᵣ))
             end
@@ -178,34 +176,10 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
         println("Final EVD: $(EVD[end])")
     end
 
-    c, EVD, log_assignements
+    c, EVD, log
 end
 
 
-
-
-function cal∇𝓛(mdp, invT, πᵦ, χ, glb::Globals)
-    𝓛  = 0.
-    ∇𝓛 = zeros(glb.n_features)
-    for k in 1:glb.n_features
-        dQₖ = zeros( glb.n_states, glb.n_actions )
-        caldQₖ!(dQₖ, mdp, invT, πᵦ, k, glb)
-
-        # Calculates total gradient over trajectories
-        for (m,trajectory) in enumerate(χ)
-            for (h,state) in enumerate(trajectory.state_hist[1:end-1])
-                sₕ = state_index(mdp, state)
-                aₕ = action_index(mdp, trajectory.action_hist[h])
-
-                𝓛 += state_action_lh(πᵦ,sₕ,aₕ)
-
-                dl_dθₖ = glb.β * ( dQₖ[sₕ,aₕ] - sum( [ state_action_lh(πᵦ,sₕ,ai⁻) * dQₖ[sₕ,ai⁻] for ai⁻ in glb.actions_i ] ) )
-                ∇𝓛[k] += dl_dθₖ
-            end
-        end
-    end
-    𝓛, ∇𝓛
-end
 
 # End module
 end

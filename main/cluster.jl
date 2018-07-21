@@ -23,14 +23,14 @@ abstract type Likelihood end
     and then multinomial over the resulting probabilities
 """
 function sample(c::Clusters, m::Integer, α::AbstractFloat)
-    αs = Vector{Float64}(c.K+1)
+    αs = zeros(c.K+1)
     ∑N = size(c.assignements,1)
     cₘ = c.assignements[m]
     for k in 1:c.K
         Nₖ = c.N[k]
         if k == cₘ
             Nₖ -= 1
-            Nₖ = (Nₖ == 0 ? 1e-5 : Nₖ)
+            Nₖ = (Nₖ == 0 ? 1e-5 : Nₖ)  # Dir doesn't like 0, so we set something very small
         end
         αs[k] = Nₖ / (α-1+∑N)
     end
@@ -97,7 +97,7 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
 
         # Calculate likelihood
         # TODO: record old likelihood so don't have to recalculate
-        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].π; η=glb.β)
+        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].π;  η=glb.β)
         𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻; η=glb.β)
         accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
 
