@@ -4,7 +4,7 @@
     η is meant to replace the unknown Pₛₛ transition probability we do not know
     We're assuming not moving is not a possible action except if out of bounds
 """
-function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
+function policy_evaluation(mdp::MDP, π::Policy, err=1e-5::Float64; η=0.9,ϵ=0.05::Float64, π_type=:ϵgreedy::Symbol)
     n_states = size(states(mdp),1)-1
     V = zeros(n_states)
     actions_space = actions(mdp)
@@ -12,7 +12,7 @@ function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
     sizes = (mdp.size_x, mdp.size_y)
     n_iters = 0
     Δ = 10
-    while Δ > ϵ
+    while Δ > err
         Δ = 0
         # For each state
         for s in 1:n_states
@@ -27,35 +27,38 @@ function policy_evaluation(mdp::MDP, π::Policy, ϵ=0.01::Float64; η=0.9)
             # and require more tests to check if one is better than the other
 
             ####    Boltzmann   ####
-            # πᵦ = exp.(π.qmat[s,:]) / sum(exp.(π.qmat[s,:]))
-            ####    ϵ-greedy    ####
-            πᵦ = ones(4)*ϵ/3
-            πᵦ[indmax(π.qmat[s,:])] = 1-ϵ
-            #####   Greedy      ####
-            # πᵦ = zeros(4)
-            # πᵦ[indmax(π.qmat[s,:])] = 1.
+            if π_type == :boltzmann
+                πᵦ = exp.(π.qmat[s,:]) / sum(exp.(π.qmat[s,:]))
+            elseif π_type == :ϵgreedy
+                ####    ϵ-greedy    ####
+                πᵦ = ones(4)*ϵ/3
+                πᵦ[indmax(π.qmat[s,:])] = 1-ϵ
+            elseif π_type == :greedy
+                #####   Greedy      ####
+                πᵦ = zeros(4)
+                πᵦ[indmax(π.qmat[s,:])] = 1.
+            end
 
             # for each possible action
             nbs = state_neighbours(mdp,s)
             for action in actions_space
 
-                a = action_index(mdp, action)
+                aᵢ = action_index(mdp, action)
 
                 ∑s = 0.
                 # Given an action, for each possible neighbour
                 for (i,nb) in enumerate(state_neighbours(mdp, s))
                     r, Pₛₛ = 0., 0.
-
                     r = reward(mdp, gw_state, action)
 
-                    if i == a
+                    if i == aᵢ
                         Pₛₛ = η
                     else
                         Pₛₛ = (1-η)/(POMDPs.n_actions(mdp)-1)
                     end
                     ∑s += Pₛₛ*( r + mdp.discount_factor * V[nb] )
                 end
-                ∑π += πᵦ[a] * ∑s
+                ∑π += πᵦ[aᵢ] * ∑s
             end
             V[s] = ∑π
 

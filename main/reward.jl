@@ -22,7 +22,10 @@ end
     Sample a new reward value for every state from gaussian
 """
 function sample(::Type{RewardFunction}, features)
-    RewardFunction(rand(Normal(0,1), features))
+    # Choi states that he sets 80% of reward values to zero
+    values = rand(Normal(0,1), features)
+    # values = [ rand()<0.2?value:0.0 for value in values]
+    RewardFunction(values)
 end
 
 """

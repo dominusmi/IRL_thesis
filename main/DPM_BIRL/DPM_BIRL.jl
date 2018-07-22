@@ -28,6 +28,14 @@ include("../utilities/general.jl")
 include("../utilities/trajectory.jl")
 
 
+function log_evd!(log, mdp, θs, ground_truth)
+    tmp_mdp = copy(mdp)
+    tmp_mdp.reward_values = ground_truth[:reward]
+    πᵣ = solve_mdp(mdp, θ)
+    vᵣ = policy_evaluation(tmp_mdp, πᵣ)
+    push!(log, norm(ground_truth[:v] - vᵣ))
+end
+
 
 """
     (proportional) Likelihood function for a single state action
@@ -45,7 +53,7 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
     β:              confidence parameter
     κ:              concentration parameter for DPM
 """
-function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy = nothing, verbose=true, update=:ML)
+function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML)
 
     verbose ? println("Using $(update) update") : nothing
 
@@ -61,10 +69,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
 
     EVD = []
 
-    if verbose && ground_policy !== nothing
-        v = policy_evaluation(mdp, ground_policy)
-    end
-
     # Precpmputes transition matrix for all actions
     # (independent of features)
     Pₐ = a2transition.(mdp,actions(mdp))
@@ -76,40 +80,32 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
     # Initialise clusters
     # K = n_trajectories
     K = 1
-    assignements    = collect(1:n_trajectories)
+    # assignements    = collect(1:n_trajectories)
     # assignements    = rand(1:K, n_trajectories)
     assignements = fill(1,n_trajectories)
-    N               = map(x->sum(assignements .== x), 1:K)
+
+    N = map(x->sum(assignements .== x), 1:K)
 
 
     # Prepare reward functions
     θs = [sample(RewardFunction, n_features) for i in 1:K]
     for (k,θ) in enumerate(θs)
-    #     # Solve mdp with current reward
-    #     θ.π  = solve_mdp(mdp, θ)
-    #     # Find Boltzmann policy
-    #     θ.πᵦ = calπᵦ(mdp, θ.π.qmat, β)
-    #
-    #     # Prepare variables for gradient
-    #     θ.invT = calInvTransition(mdp, θ.πᵦ, γ)
-    #     # Calculates value and gradient of trajectory likelihood
-    #     θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, ϕ, θ.invT, Pₐ, θ.πᵦ, β, χ, n_states, n_actions, n_features, actions_i)
         assigned2cluster = (assignements .== k)
         χₖ = χ[assigned2cluster]
         update_reward!(θ, mdp, χₖ, glb)
     end
 
-    𝓛_traj          = ones(n_trajectories)*1e-5
-    c               = Clusters(K, assignements, N, 𝓛_traj, θs)
+    𝓛_traj = ones(n_trajectories)*1e-5
+    c      = Clusters(K, assignements, N, 𝓛_traj, θs)
 
-    update_clusters!(c, mdp, κ, glb)
+    # update_clusters!(c, mdp, κ, glb)
 
     log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [])
 
     for t in 1:iterations
         tic()
 
-        update_clusters!(c, mdp, κ, glb)
+        # update_clusters!(c, mdp, κ, glb)
 
         for (k, θ) in enumerate(c.rewards)
             # Find potential new reward
@@ -135,10 +131,9 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
             elseif update == :langevin || update == :langevin_rand
                 # Use result from Choi
-                𝓛 += sum(pdf.(Normal(0,1), θ.values))
+                θ.𝓛 += sum(pdf.(Normal(0,1), θ.values))
                 𝓛⁻ += sum(pdf.(Normal(0,1), θ⁻.values))
-                p =  𝓛⁻ / θ.𝓛 * proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ) / proposal_distribution(θ, θ⁻, ∇𝓛, τ)
-                @show p
+                p =  𝓛⁻ / θ.𝓛 * proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ) / proposal_distribution(θ, θ⁻, θ.∇𝓛, τ)
                 if rand() > p
                     θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
                 end
@@ -150,31 +145,33 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_policy 
         # Log EVD
         if verbose
             println("Iteration took $elapsed seconds")
-            push!(log[:assignements], copy(c.N))
-            push!(log[:likelihoods], map(x->x.𝓛, c.rewards))
-            push!(log[:rewards], c.rewards)
+        end
+        push!(log[:assignements], copy(c.N))
+        push!(log[:likelihoods], map(x->x.𝓛, c.rewards))
+        push!(log[:rewards], c.rewards)
 
-            if ground_policy !== nothing
-                EVDs = []
-                for θ in c.rewards
-                    vᵣ = policy_evaluation(mdp, θ.π)
-                    push!(EVDs, norm(v-vᵣ))
-                end
-                push!(log[:EVDs], EVDs)
-                vᵣ = policy_evaluation(mdp, θs[1].π)
-                push!(EVD, norm(v-vᵣ))
-            end
+        if ground_truth !== nothing
+            # EVDs = []
+            # for θ in c.rewards
+            #     mdpᵣ = reward_mdp(mdp, θ)
+            #     vᵣ = policy_evaluation(mdpᵣ, θ.π)
+            #     push!(EVDs, norm(v-vᵣ))
+            # end
+            # push!(log[:EVDs], EVDs)
+            #
+            # mdpᵣ = reward_mdp(mdp, θs[1])
+            log_evd!(log[:EVDs], mdp, θs[1], ground_truth)
         end
     end
 
     # Log EVD
-    if verbose && ground_policy !== nothing
-        # Need to change this to account for features
-        πᵣ = solve_mdp(mdp, c.rewards[1])
-        vᵣ = policy_evaluation(mdp, πᵣ)
-        push!(EVD, norm(v-vᵣ))
-        println("Final EVD: $(EVD[end])")
-    end
+    # if verbose && ground_policy !== nothing
+    #     # Need to change this to account for features
+    #     πᵣ = solve_mdp(mdp, c.rewards[1])
+    #     vᵣ = policy_evaluation(mdp, πᵣ)
+    #     push!(EVD, norm(v-vᵣ))
+    #     println("Final EVD: $(EVD[end])")
+    # end
 
     c, EVD, log
 end

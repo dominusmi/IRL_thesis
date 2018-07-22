@@ -3,7 +3,6 @@ import Base.copy
 
 manhattan(x,y) = sum(abs.(x-y))
 
-
 function generate_reward_states(x,y)
 
     states = zeros(y,x)
@@ -33,6 +32,7 @@ function solve_mdp(mdp::GridWorld)
     policy = ValueIterationPolicy(mdp)
     policy = solve(solver, mdp, policy)
 end
+
 
 function generate_gridworld(size_x::Integer, size_y::Integer;
                             γ=0.9, boundary_penalty=-1.0, transitionₚ=1.0)
@@ -117,9 +117,9 @@ function generate_trajectories(mdp, policy, n=50)
 end
 
 """
-    Solves mdp with new reward function
+    Returns a new mdp with the reward function's values
 """
-function solve_mdp(mdp::GridWorld, r::RewardFunction)
+function reward_mdp(mdp::GridWorld, r::RewardFunction)
     new_mdp = copy(mdp)
     n_states = size(r.values,1)
     reward_states = Array{GridWorldState}(n_states)
@@ -134,7 +134,15 @@ function solve_mdp(mdp::GridWorld, r::RewardFunction)
     end
     new_mdp.reward_states = reward_states
     new_mdp.reward_values = reward_values
+    new_mdp
+end
 
+
+"""
+    Solves mdp with new reward function
+"""
+function solve_mdp(mdp::GridWorld, r::RewardFunction)
+    new_mdp = reward_mdp(mdp, r)
     new_π = solve_mdp(new_mdp)
     new_π
 end
