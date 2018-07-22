@@ -41,7 +41,7 @@ raw_mdp.reward_values = Array{Float64}(0)
 
 ground_truth = Dict(:policy=>policy, :reward=>mdp.reward_values, :v=>DPMBIRL.policy_evaluation(mdp, policy))
 
-c, EVD, log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=confidence, κ=.1, ground_truth = ground_truth, verbose = false, update = :ML)
+c, log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=confidence, κ=.1, ground_truth = ground_truth, verbose = false, update = :ML)
 
 for (j, policy) in enumerate(policies)
 	v = DPMBIRL.policy_evaluation(mdps[j], policy, η=.9, π_type=:ϵgreedy)

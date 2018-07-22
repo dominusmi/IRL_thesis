@@ -37,11 +37,12 @@ function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, π::Polic
 
         # Get state index and optimal action (int)
         s = state_index(mdp, state)
-        optimal = POMDPModels.a2int( action(π, state), mdp)+1
+        # optimal = POMDPModels.a2int( action(π, state), mdp)+1
+        optimal = action_index(mdp, action(π,state))
 
         # Compute optimal Q value for the step
         Qᵒ = π.qmat[s,optimal]
-        nominator = exp(η*Qᵒ)
+        nominator = η*Qᵒ
 
         denominator = 1.0
         for a in POMDPModels.actions(mdp)
@@ -52,7 +53,7 @@ function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, π::Polic
                 denominator += exp(η*Q)
             end
         end
-        likelihood = -log(nominator / denominator)
+        likelihood += nominator - log(denominator)
     end
     likelihood
 end

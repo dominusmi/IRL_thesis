@@ -28,7 +28,7 @@ include("../utilities/general.jl")
 include("../utilities/trajectory.jl")
 
 
-function log_evd!(log, mdp, θs, ground_truth)
+function log_evd!(log, mdp, θ, ground_truth)
     tmp_mdp = copy(mdp)
     tmp_mdp.reward_values = ground_truth[:reward]
     πᵣ = solve_mdp(mdp, θ)
@@ -67,8 +67,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
     n_features = size(ϕ,2)
     n_trajectories = size(χ,1)
 
-    EVD = []
-
     # Precpmputes transition matrix for all actions
     # (independent of features)
     Pₐ = a2transition.(mdp,actions(mdp))
@@ -81,8 +79,8 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
     # K = n_trajectories
     K = 1
     # assignements    = collect(1:n_trajectories)
-    # assignements    = rand(1:K, n_trajectories)
-    assignements = fill(1,n_trajectories)
+    assignements    = rand(1:K, n_trajectories)
+    # assignements = fill(1,n_trajectories)
 
     N = map(x->sum(assignements .== x), 1:K)
 
@@ -98,14 +96,14 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
     𝓛_traj = ones(n_trajectories)*1e-5
     c      = Clusters(K, assignements, N, 𝓛_traj, θs)
 
-    # update_clusters!(c, mdp, κ, glb)
+    update_clusters!(c, mdp, κ, glb)
 
     log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [])
 
     for t in 1:iterations
         tic()
 
-        # update_clusters!(c, mdp, κ, glb)
+        update_clusters!(c, mdp, κ, glb)
 
         for (k, θ) in enumerate(c.rewards)
             # Find potential new reward
@@ -164,16 +162,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
         end
     end
 
-    # Log EVD
-    # if verbose && ground_policy !== nothing
-    #     # Need to change this to account for features
-    #     πᵣ = solve_mdp(mdp, c.rewards[1])
-    #     vᵣ = policy_evaluation(mdp, πᵣ)
-    #     push!(EVD, norm(v-vᵣ))
-    #     println("Final EVD: $(EVD[end])")
-    # end
-
-    c, EVD, log
+    c, log
 end
 
 
