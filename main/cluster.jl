@@ -1,4 +1,4 @@
-import Base.deleteat!
+import Base.deleteat!, Base.copy
 
 mutable struct Clusters
     K::Int64                        # Cluster index
@@ -6,11 +6,24 @@ mutable struct Clusters
     N::Array{<:Integer}             # Number of trajectories per cluster
     𝓛ᵪ::Array{<:AbstractFloat}      # Trajectories likelihood
     rewards::Array{RewardFunction}  # Reward function
+    ids::Array{Int64}
+
 end
 function Clusters(assignements)
     K = unique(unique(assignements))
-    Clusters(K, assignements)
+    c = Clusters(K, assignements)
+    c.ids = collect(1:K)
+    c
 end
+function Clusters(K, assignements, N, 𝓛ᵪ, rewards)
+    ids = collect(1:K)
+    Clusters(K, assignements, N, 𝓛ᵪ, rewards, ids)
+end
+
+function copy(c::Clusters)
+    Clusters(copy(c.K), copy(c.assignements), copy(c.N), copy(c.𝓛ᵪ), copy(c.rewards), copy(c.ids))
+end
+
 
 abstract type Likelihood end
 
@@ -49,6 +62,7 @@ end
 function deleteat!(c::Clusters, index::Integer)
     deleteat!(c.N, index)
     deleteat!(c.rewards, index)
+    deleteat!(c.ids, index)
     c.K -= 1
     temp = c.assignements .> index
     c.assignements[temp] -= 1
@@ -60,11 +74,11 @@ end
     assignement against the likelihood of the old one
 """
 function accept_proposition(::Type{Likelihood}, new_l::AbstractFloat, l::AbstractFloat)
-    if new_l > l
-        return true
-    end
-    P = new_l / l
-    rand() > P
+    P = exp(new_l / l)
+    r = rand()
+    # print("($(@sprintf("%.2f", new_l)), $(@sprintf("%.2f", l)), $(@sprintf("%.2f", P)), $(@sprintf("%.2f", r))),")
+
+    P > 1.0 ? true : r > P
 end
 
 
@@ -79,8 +93,14 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
     # Permute trajectory and clusters to avoid any bias
     trajectoryₚ = randperm(size(glb.χ,1))
 
+    changes = 0
+    tot = 0
+
+    updated_clusters_id = Set()
+
     # Sample new clusters
     for m in trajectoryₚ
+        tot +=1
 
         new_cluster = false
         cₘ   = clusters.assignements[m] # Current assignement
@@ -97,12 +117,13 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
 
         # Calculate likelihood
         # TODO: record old likelihood so don't have to recalculate
-        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].π;  η=glb.β)
+        # This trajectory likelihood is LOGGED correctly ✓
+        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].πᵦ;  η=glb.β)
         𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻; η=glb.β)
         accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
-
         # Update if accepted
         if accept
+            changes += 1
             # Update likelihood of trajectory
             # clusters.𝓛[m] = 𝓛⁻
 
@@ -112,19 +133,27 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
                 update_reward!(r⁻, mdp, [glb.χ[m]], glb)
                 push!(clusters.rewards, r⁻)
                 push!(clusters.N,1)
+                push!(clusters.ids, clusters.K+1)
                 clusters.K += 1
                 clusters.N[cₘ] -= 1
                 clusters.assignements[m] = cₘ⁻
+
             else
                 # Update clusters to new assignement
                 clusters.N[cₘ] -= 1
                 clusters.N[cₘ⁻] += 1
                 clusters.assignements[m] = cₘ⁻
+                push!(updated_clusters_id, clusters.ids[cₘ], clusters.ids[cₘ⁻])
             end
         end
         # Remove empty clusters
         if (to_remove = findfirst(x->x==0, clusters.N))>0
             deleteat!(clusters, to_remove)
+            if to_remove ∈ updated_clusters_id
+                delete!(updated_clusters_id,to_remove)
+            end
         end
     end
+    println("There were $(changes/tot) accepted clustering updates")
+    updated_clusters_id
 end

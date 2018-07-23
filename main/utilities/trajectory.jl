@@ -30,7 +30,7 @@ end
 """
     Trajectory likelihood given a policy
 """
-function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, π::Policy; η::Number = 1.0)
+function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, πᵦ::Array{Float64,2}; η::Number = 1.0)
     # Calculate likelihood trajectory
     likelihood = 0.0
     for state in trajectory.state_hist[1:end-2]
@@ -38,18 +38,20 @@ function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, π::Polic
         # Get state index and optimal action (int)
         s = state_index(mdp, state)
         # optimal = POMDPModels.a2int( action(π, state), mdp)+1
-        optimal = action_index(mdp, action(π,state))
+        # optimal = action_index(mdp, action(π,state))
 
         # Compute optimal Q value for the step
-        Qᵒ = π.qmat[s,optimal]
+        # Qᵒ = π.qmat[s,optimal]
+        Qᵒ = maximum(πᵦ[s,:])
         nominator = η*Qᵒ
 
         denominator = 1.0
         for a in POMDPModels.actions(mdp)
             # check if action inbounds
             if POMDPModels.inbounds(mdp, state, a)
-                a = POMDPModels.a2int( action(π, state), mdp )+1
-                Q = π.qmat[s,a]
+                # a = POMDPModels.a2int( action(π, state), mdp )+1
+                # Q = π.qmat[s,a]
+                Q = πᵦ[s, action_index(mdp, a)]
                 denominator += exp(η*Q)
             end
         end

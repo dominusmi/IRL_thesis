@@ -1,4 +1,4 @@
-import Base.+, Base.-
+import Base.+, Base.-, Base.copy
 
 mutable struct RewardFunction
     values::Array{<:Number}
@@ -8,6 +8,12 @@ mutable struct RewardFunction
     𝓛::Float64
     ∇𝓛::Array{<:AbstractFloat,1}
     RewardFunction(values::Array{<:Number}) = new(values)
+end
+
+
+function copy(r::RewardFunction)
+    RewardFunction(copy(r.values), DiscreteValueIteration.Policy(r.π),
+                    copy(r.πᵦ), copy(r.invT), copy(𝓛), copy(∇𝓛))
 end
 
 function +(r::RewardFunction, values::Array{<:AbstractFloat})
