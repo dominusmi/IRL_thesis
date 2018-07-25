@@ -4,8 +4,8 @@ using POMDPToolbox
 
 srand(1)
 n_agents = 2
-traj_per_agent = 30
-iterations = 200
+traj_per_agent = 50
+iterations = 50
 learning_rate = .1
 confidence = 1.0
 ϕ = eye(100)
@@ -20,28 +20,9 @@ for i in 1:n_agents
 	push!(policies, policy)
 end
 
-# χ = χ[1:300]
-# policies[1], policies[2] = policies[2], policies[1]
-# mdps[1], mdps[2] = mdps[2], mdps[1]
-# deleteat!(policies,1)
-# deleteat!(mdps,1)
-# srand(1)
-# mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
-# χ = DPMBIRL.generate_trajectories(mdp, policy, 50)
-# ϕ = eye(100)
-# learning_rate = 0.1
-# confidence = 1.0
-#
-# policies = [policy]
-# mdps = [mdp]
-# iterations = 30
 
 raw_mdp = copy(mdps[1])
-# raw_mdp.reward_states = Array{GridWorldState}(0)
 raw_mdp.reward_values = Array{Float64}(0)
-
-# raw_mdp = mdp
-
 
 vs = []
 for i in 1:size(mdps,1)
@@ -50,7 +31,9 @@ end
 ground_truth = Dict(:policy=>policies, :rewards=>map(x->x.reward_values, mdps), :vs=>vs)
 
 
-c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=confidence, κ=0.1, ground_truth = ground_truth, verbose = true, update = :langevin_rand, burn_in=30)
+c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=confidence, κ=0.1,
+							ground_truth = ground_truth, verbose = true, update = :langevin, burn_in=1)
+
 
 for (j, policy) in enumerate(policies)
 	v = DPMBIRL.policy_evaluation(mdps[j], policy, η=.9, π_type=:ϵgreedy)
@@ -61,20 +44,18 @@ for (j, policy) in enumerate(policies)
 	end
 end
 
-include("DPM_BIRL.jl")
-srand(1)
-mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
-v = policy.util[1:end-1]
-# v = reshape(reshape(v,(10,10))', (100,1))
-vᵣ = DPMBIRL.policy_evaluation(mdp, policy)
-norm(v-vᵣ)
-
-
 using Plots
-fig = @gif for ass in log[:assignements]
-	histogram(ass)
-end
-show(fig)
+
+fig = Plots.plot([ _log[:EVDs][i][1] for i in 1:size(_log[:EVDs],1)], title="EVD for langevin, 2 agents, 50 trajectories", label="EVD cluster#1", linewidth=1.5, color="blue")
+lhs = [ _log[:likelihoods][i][1] for i in 1:size(_log[:EVDs],1)]
+Plots.plot!(lhs, label="Likelihood cluster#1", linestyle=:dot, color="blue")
+fig = Plots.plot!([ _log[:EVDs][i][2,2] for i in 1:size(_log[:EVDs],1)], label="EVD cluster#2",  linewidth=1.5,color="red")
+lhs = [ _log[:likelihoods][i][2] for i in 1:size(_log[:EVDs],1)]
+Plots.plot!(lhs, label="Likelihood cluster#2", linestyle=:dot, color="red")
+savefig(fig, "EVD-LH_LANG_2_50_wprior_normed.png")
+
+
+lhs
 
 clusters_hist = log[:clusters]
 curr_cluster = clusters_hist[190]
@@ -84,3 +65,33 @@ curr_reward = curr_cluster.rewards[1]
 @gif for evd in log[:EVDs]
 	heatmap(evd)
 end
+
+
+
+mdp = mdps[2]
+policy = policies[2]
+states = ordered_states(mdp)
+πᵦ = zeros(size(states,1)-1, size(actions(mdp),1))
+
+for s in states[1:end-1]
+	si = state_index(mdp,s)
+	softmax_denom = sum(exp.(confidence*policy.qmat[si,:]))
+	for a in actions(mdp)
+		ai = action_index(mdp,a)
+		πᵦ[si,ai] = exp(confidence*policy.qmat[si,ai]) / softmax_denom
+	end
+end
+
+llh = 0.
+for trajectory in χ
+	# Calculate likelihood trajectory
+	log_likelihood = 0.
+	traj_size = size(trajectory.state_hist,1)-1
+	for (h,state) in enumerate(trajectory.state_hist[1:end-1])
+		sₕ = state_index(mdp, state)
+		aₕ = action_index(mdp, trajectory.action_hist[h])
+		log_likelihood += Base.log(πᵦ[sₕ,aₕ])
+	end
+	llh += log_likelihood /50
+end
+llh

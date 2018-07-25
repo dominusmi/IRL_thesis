@@ -39,12 +39,10 @@ end
 """
 function proposal_distribution(r₁::RewardFunction, r₂::RewardFunction, ∇logTarget::Array, τ)
     D = size(r₁.values,1)
-    g = r₁.values - r₂.values - 0.5*τ^2 * ∇logTarget
+    g = r₂.values - r₁.values - 0.25*τ^2 * ∇logTarget
     g = inv(-2*τ^2) * norm(g)^2
     # This is the correct calculation, but the initial constant cancels out
     # g = inv( (2*π*τ^2)^(D/2) ) * exp(g)
-    # @show g
-    # exp(g)
     g
 end
 
@@ -59,5 +57,15 @@ function update_reward!(θ::RewardFunction, mdp, χₖ, glb::Globals)
     # Prepare variables for gradient
     θ.invT = calInvTransition(mdp, θ.πᵦ, glb.γ)
     # Calculates value and gradient of trajectory likelihood
-    θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ, χₖ, glb)
+    θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
+    θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ, χₖ, glb)
+end
+
+"""
+    Return normal prior of reward and its gradient
+"""
+function log_prior(r::RewardFunction)
+    # variance = σ²
+    var = 1.0
+    sum(-(r.values'*r.values)./(2*var)), -r.values ./ var
 end

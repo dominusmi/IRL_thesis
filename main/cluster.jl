@@ -74,7 +74,7 @@ end
     assignement against the likelihood of the old one
 """
 function accept_proposition(::Type{Likelihood}, new_l::AbstractFloat, l::AbstractFloat)
-    P = exp(new_l / l)
+    P = exp(new_l-l)
     r = rand()
     # print("($(@sprintf("%.2f", new_l)), $(@sprintf("%.2f", l)), $(@sprintf("%.2f", P)), $(@sprintf("%.2f", r))),")
 
@@ -106,7 +106,9 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
         cₘ   = clusters.assignements[m] # Current assignement
         cₘ⁻  = sample(clusters,m,κ)     # Potential new assignement
 
-        if cₘ⁻ == clusters.K+1
+        if cₘ⁻ == cₘ
+            continue
+        elseif cₘ⁻ == clusters.K+1
             # If new cluster, sample new reward
             r⁻ = sample(RewardFunction, glb.n_features)
             new_cluster = true
@@ -118,8 +120,8 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
         # Calculate likelihood
         # TODO: record old likelihood so don't have to recalculate
         # This trajectory likelihood is LOGGED correctly ✓
-        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].πᵦ;  η=glb.β)
-        𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻; η=glb.β)
+        𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].πᵦ, glb)
+        𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻, glb)
         accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
         # Update if accepted
         if accept

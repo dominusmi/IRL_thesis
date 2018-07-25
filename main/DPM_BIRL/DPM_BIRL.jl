@@ -43,7 +43,7 @@ function log_evd!(_log, mdp, θs, ground_truth)
             πᵣ = solve_mdp(mdp, θ)
             # Check how well does π work w.r.t. the optimal value function
             vᵣ = policy_evaluation(tmp_mdp, πᵣ)
-            EVD_matrix[i,j] = norm(v - vᵣ,1)
+            EVD_matrix[i,j] = norm(v - vᵣ,2)
         end
     end
     push!(_log, EVD_matrix)
@@ -67,7 +67,7 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
     κ:              concentration parameter for DPM
     burn_in:        number of iterations not to record (at the beginning)
 """
-function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5)
+function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true)
 
     verbose ? println("Using $(update) update") : nothing
 
@@ -91,7 +91,8 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
     #### Initialisation ####
     # Initialise clusters
     # K = n_trajectories
-    K = 5
+    # K = 5
+    K = 2
     # assignements    = collect(1:n_trajectories)
     assignements    = rand(1:K, n_trajectories)
     # assignements = fill(1,n_trajectories)
@@ -110,15 +111,18 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
     𝓛_traj = ones(n_trajectories)*1e-5
     c      = Clusters(K, assignements, N, 𝓛_traj, θs)
 
-    update_clusters!(c, mdp, κ, glb)
+    use_clusters ? update_clusters!(c, mdp, κ, glb) : nothing
 
     _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[])
 
     for t in 1:iterations
         tic()
 
-        updated_clusters_id = update_clusters!(c, mdp, κ, glb)
-        verbose ? println("Clusters changed: $(length(updated_clusters_id)) of $(c.K)") : nothing
+        if use_clusters
+            updated_clusters_id = Set()
+            updated_clusters_id = update_clusters!(c, mdp, κ, glb)
+            verbose ? println("Clusters changed: $(length(updated_clusters_id)) of $(c.K)") : nothing
+        else
 
         for (k, θ) in enumerate(c.rewards)
             # Get the clusters' trajectories
@@ -126,19 +130,23 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             χₖ = χ[assigned2cluster]
 
             # Update likelihood and gradient to current cluster
-            # TODO: only do this step if cluster changed
-            if k in updated_clusters_id
-                θ.𝓛, θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
+            # θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ)
+            # θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
+            if use_clusters && k in updated_clusters_id
+                θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
+                θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
             end
 
             # Find potential new reward
             if update == :langevin_rand
-                ϵ = α * rand(Normal(0,1), n_features)
-                indeces = rand(n_features) .< 0.2
-                ϵ[indeces] = 0.0
-                θ⁻ = θ + α * θ.∇𝓛 + ϵ
+                ϵ = rand(Normal(0,1), n_features)
+                # indeces = rand(n_features) .< 0.2
+                # ϵ[indeces] = 0.0
+                θ⁻ = θ + α*θ.∇𝓛 + ϵ*α
+                θ⁻.values ./= sum(abs.(θ⁻.values))
             else
-                θ⁻ = θ + α * θ.∇𝓛
+                θ⁻ = θ + α*θ.∇𝓛
+                θ⁻.values ./= sum(abs.(θ⁻.values))
             end
 
             # Solve everything for potential new reward
@@ -147,27 +155,61 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
 
             # Calculate likelihood and gradient for new reward
-            𝓛⁻, ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
+            𝓛⁻ = cal𝓛(mdp, πᵦ⁻, χₖ, glb)
+            ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
 
 
             # Do the update
             if update == :ML
                 # We simply follow the gradient
+                # logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
+                # 𝓛⁻ += logPrior⁻
+                # ∇𝓛⁻ += ∇logPrior⁻
+                println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
             elseif update == :langevin || update == :langevin_rand
                 # Use result from Choi
-                θ.𝓛 += sum(logpdf.(Normal(0,1), θ.values))
-                𝓛⁻ += sum(logpdf.(Normal(0,1), θ⁻.values))
-                # logpd⁻ = Base.log(proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ))
-                # logpd  = Base.log(proposal_distribution(θ, θ⁻, θ.∇𝓛, τ))
+
+                logPrior, ∇logPrior = log_prior(θ)
+                logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
+
+                 println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+
+                θ.𝓛 += logPrior
+                θ.∇𝓛 += ∇logPrior
+                𝓛⁻ += logPrior⁻
+                ∇𝓛⁻ += ∇logPrior⁻
+
+                #### CHOI SHIT ####
+
+                # a = ϵ + τ/2*(θ.∇𝓛 + ∇𝓛⁻)
+                # a = exp(-0.5*sum(a.^2))*exp(𝓛⁻);
+                # b = exp(-0.5 * sum(ϵ.^2) ) * exp( θ.𝓛 )
+
+                # @show θ.𝓛, 𝓛⁻, a, b, norm(ϵ + τ/2*(θ.∇𝓛 - ∇𝓛⁻))^2
+
+                # p = a/b
+
+                #### CURRENT WORKING VERSION ####
                 logpd⁻ = proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ)
                 logpd = proposal_distribution(θ, θ⁻, θ.∇𝓛, τ)
 
-                # print("($(@sprintf("%.2f", θ.𝓛)), $(@sprintf("%.2f", 𝓛⁻)), $(@sprintf("%.2f", logpd)), $(@sprintf("%.2f", logpd⁻)))")
+                log_coef = log(inv(2*3.1415*τ^2)^(n_features/2))
 
-                p =  𝓛⁻ / θ.𝓛 * logpd⁻ / logpd
+                println("log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), logpd: $(@sprintf("%.2f", logpd)), logpd⁻: $(@sprintf("%.2f", logpd⁻)))")
+                # print("𝓛: ($(@sprintf("%.2f", exp(θ.𝓛))), 𝓛⁻ $(@sprintf("%.2f", exp(𝓛⁻))), $(@sprintf("%.2f", log_coef+logpd)), $(@sprintf("%.2f", log_coef+logpd⁻)))")
+
+
+                # p = exp(𝓛⁻-θ.𝓛 + logpd⁻-logpd)
+                p =  (𝓛⁻/θ.𝓛) * logpd⁻ / logpd
+                # p =  𝓛⁻ / θ.𝓛 * logpd⁻ / logpd
+
+
+                # p = percentage_likelihood * logpd⁻ / logpd
                 # p = exp( 𝓛⁻ + logpd⁻ - θ.𝓛 - logpd)
-                print("$p, ")
+                println("   current p: $p")
+                # println("   real p:    $( exp(𝓛⁻ - θ.𝓛) * exp(log_coef+logpd⁻ - log_coef-logpd))")
                 if rand() < p
                     θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
                 end
