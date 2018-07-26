@@ -6,6 +6,7 @@ using POMDPs
 using POMDPModels
 using Distributions
 using POMDPToolbox
+using JLD
 
 immutable Globals
     n_states::Int64
@@ -67,7 +68,7 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
     κ:              concentration parameter for DPM
     burn_in:        number of iterations not to record (at the beginning)
 """
-function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true)
+function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true, path_to_file=nothing)
 
     verbose ? println("Using $(update) update") : nothing
 
@@ -92,7 +93,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
     # Initialise clusters
     # K = n_trajectories
     # K = 5
-    K = 2
+    K = 1
     # assignements    = collect(1:n_trajectories)
     assignements    = rand(1:K, n_trajectories)
     # assignements = fill(1,n_trajectories)
@@ -113,16 +114,19 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
     use_clusters ? update_clusters!(c, mdp, κ, glb) : nothing
 
-    _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[])
+    _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[], :acceptance_probability=>[])
 
+    σ = eye(n_features)*0.1
+    burned = 0
     for t in 1:iterations
+        changed = false
         tic()
 
         if use_clusters
             updated_clusters_id = Set()
             updated_clusters_id = update_clusters!(c, mdp, κ, glb)
             verbose ? println("Clusters changed: $(length(updated_clusters_id)) of $(c.K)") : nothing
-        else
+        end
 
         for (k, θ) in enumerate(c.rewards)
             # Get the clusters' trajectories
@@ -132,9 +136,11 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             # Update likelihood and gradient to current cluster
             # θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ)
             # θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
-            if use_clusters && k in updated_clusters_id
+            if use_clusters && k ∈ updated_clusters_id
                 θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
                 θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
+            elseif update == :MH
+                θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
             end
 
             # Find potential new reward
@@ -144,6 +150,10 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 # ϵ[indeces] = 0.0
                 θ⁻ = θ + α*θ.∇𝓛 + ϵ*α
                 θ⁻.values ./= sum(abs.(θ⁻.values))
+            elseif update == :MH
+                # ϵ = rand(Normal(0,1), n_features)
+                ϵ = rand(MultivariateNormal(σ))
+                θ⁻ = θ + ϵ
             else
                 θ⁻ = θ + α*θ.∇𝓛
                 θ⁻.values ./= sum(abs.(θ⁻.values))
@@ -152,11 +162,12 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             # Solve everything for potential new reward
             π⁻  = solve_mdp(mdp, θ⁻)
             πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, glb)
-            invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
-
-            # Calculate likelihood and gradient for new reward
             𝓛⁻ = cal𝓛(mdp, πᵦ⁻, χₖ, glb)
-            ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
+
+            if update !== :MH
+                invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
+                ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
+            end
 
 
             # Do the update
@@ -166,15 +177,29 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 # 𝓛⁻ += logPrior⁻
                 # ∇𝓛⁻ += ∇logPrior⁻
                 println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
-
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
+            elseif update == :MH
+                logPrior, ~ = log_prior(θ)
+                logPrior⁻, ~ = log_prior(θ⁻)
+                θ.𝓛 += logPrior
+                𝓛⁻ += logPrior⁻
+
+                # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+
+                p = exp(𝓛⁻ - θ.𝓛)
+                # println("   current p: $p")
+                if rand() < p
+                    θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, zeros(0), zeros(0,0), π⁻, πᵦ⁻
+                    changed = true
+                    burned += 1
+                end
             elseif update == :langevin || update == :langevin_rand
                 # Use result from Choi
 
                 logPrior, ∇logPrior = log_prior(θ)
                 logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
 
-                 println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+                println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
 
                 θ.𝓛 += logPrior
                 θ.∇𝓛 += ∇logPrior
@@ -201,8 +226,8 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 # print("𝓛: ($(@sprintf("%.2f", exp(θ.𝓛))), 𝓛⁻ $(@sprintf("%.2f", exp(𝓛⁻))), $(@sprintf("%.2f", log_coef+logpd)), $(@sprintf("%.2f", log_coef+logpd⁻)))")
 
 
-                # p = exp(𝓛⁻-θ.𝓛 + logpd⁻-logpd)
-                p =  (𝓛⁻/θ.𝓛) * logpd⁻ / logpd
+                p = exp(𝓛⁻-θ.𝓛 + logpd⁻-logpd)
+                # p =  (𝓛⁻/θ.𝓛) * logpd⁻ / logpd
                 # p =  𝓛⁻ / θ.𝓛 * logpd⁻ / logpd
 
 
@@ -218,18 +243,48 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
         elapsed = toq()
 
+        if changed
+            println("Burned: $burned")
+        end
+
         # Log EVD
         verbose ? println("Iteration number $t took $elapsed seconds") : nothing
-        if t > burn_in
-            push!(_log[:assignements], copy(c.N))
-            push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
-            push!(_log[:rewards], copy(c.rewards))
-            push!(_log[:clusters], copy(c))
+        if burned > burn_in
+            # push!(_log[:assignements], copy(c.N))
+            if path_to_file == nothing
+                push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
+                push!(_log[:rewards], copy(c.rewards))
+                use_clusters ? push!(_log[:clusters], copy(c)) : nothing
 
-            if ground_truth !== nothing
-                log_evd!(_log[:EVDs], mdp, c.rewards, ground_truth)
-                verbose ? show(_log[:EVDs][end]) : nothing
+                if ground_truth !== nothing
+                    log_evd!(_log[:EVDs], mdp, c.rewards, ground_truth)
+                    verbose ? show(_log[:EVDs][end]) : nothing
+                end
+            elseif path_to_file !== nothing && changed
+                f = jldopen(path_to_file, "r+")
+                write(f, "reward_$burned", c.rewards[1].values)
+                write(f, "likelihood_$burned", c.rewards[1].𝓛)
+                close(f)
             end
+        elseif burned < burn_in
+            push!(_log[:rewards], c.rewards)
+        elseif burned == burn_in
+            push!(_log[:rewards], c.rewards)
+            println("Finished burn in")
+            rewards = zeros(burn_in, n_features)
+            @show size(_log[:rewards])
+            for i in 1:burn_in
+                rewards[i,:] = _log[:rewards][i][1].values
+            end
+            # σ = σ .* [sqrt(cov(rewards[rewards[:,1].!==0.0,i])) for i in 1:n_features]
+            _log[:rewards] = []
+            # @show σ
+            # println("Found new covariance, sample: $(σ[1:3,1:3])")
+            burn_in = 0
+            burned = 1
+            f = jldopen(path_to_file, "w")
+            write(f, "reward_$burned", c.rewards[1])
+            close(f)
         end
     end
 

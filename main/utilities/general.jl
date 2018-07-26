@@ -75,3 +75,9 @@ function cal∇𝓛(mdp, invT, πᵦ, χ, glb::Globals)
     end
     ∇𝓛
 end
+
+
+
+function load_reward_log(path_to_file)
+    load(path_to_file)
+end

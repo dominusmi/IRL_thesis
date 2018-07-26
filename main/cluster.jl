@@ -156,6 +156,6 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
             end
         end
     end
-    println("There were $(changes/tot) accepted clustering updates")
+    # println("There were $(changes/tot) accepted clustering updates")
     updated_clusters_id
 end

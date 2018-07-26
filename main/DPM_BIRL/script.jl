@@ -5,7 +5,7 @@ using POMDPToolbox
 srand(1)
 n_agents = 2
 traj_per_agent = 50
-iterations = 50
+iterations = 5000
 learning_rate = .1
 confidence = 1.0
 ϕ = eye(100)
@@ -32,7 +32,8 @@ ground_truth = Dict(:policy=>policies, :rewards=>map(x->x.reward_values, mdps), 
 
 
 c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=confidence, κ=0.1,
-							ground_truth = ground_truth, verbose = true, update = :langevin, burn_in=1)
+							ground_truth = ground_truth, verbose = false, update = :MH,
+							burn_in=100, use_clusters=false, path_to_file="$(pwd())/MH_test.jld")
 
 
 for (j, policy) in enumerate(policies)
@@ -95,3 +96,7 @@ for trajectory in χ
 	llh += log_likelihood /50
 end
 llh
+
+
+using JLD
+load("$(pwd())/MH_test.jld")
