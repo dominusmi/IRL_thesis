@@ -68,9 +68,15 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
     κ:              concentration parameter for DPM
     burn_in:        number of iterations not to record (at the beginning)
 """
-function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true, path_to_file=nothing)
+function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true, path_to_file=nothing, seed=1)
 
     verbose ? println("Using $(update) update") : nothing
+
+    if path_to_file !== nothing
+        path_to_file = "$path_to_file/$(update)_$(seed)_$(use_clusters).jld"
+        f = jldopen(path_to_file, "w")
+        close(f)
+    end
 
     τ = sqrt(2*α)
 
@@ -281,10 +287,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             # @show σ
             # println("Found new covariance, sample: $(σ[1:3,1:3])")
             burn_in = 0
-            burned = 1
-            f = jldopen(path_to_file, "w")
-            write(f, "reward_$burned", c.rewards[1])
-            close(f)
+            burned = 0
         end
     end
 
