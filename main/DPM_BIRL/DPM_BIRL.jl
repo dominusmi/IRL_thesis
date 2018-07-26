@@ -122,7 +122,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
     _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[], :acceptance_probability=>[])
 
-    σ = eye(n_features)*0.1
+    σ = eye(n_features)*τ
     burned = 0
     for t in 1:iterations
         changed = false
@@ -154,7 +154,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 ϵ = rand(Normal(0,1), n_features)
                 # indeces = rand(n_features) .< 0.2
                 # ϵ[indeces] = 0.0
-                θ⁻ = θ + α*θ.∇𝓛 + ϵ*α
+                θ⁻ = θ + α*θ.∇𝓛 + τ*ϵ
                 θ⁻.values ./= sum(abs.(θ⁻.values))
             elseif update == :MH
                 # ϵ = rand(Normal(0,1), n_features)
@@ -177,11 +177,13 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
 
             # Do the update
+            p = 0.
             if update == :ML
                 # We simply follow the gradient
                 # logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
                 # 𝓛⁻ += logPrior⁻
                 # ∇𝓛⁻ += ∇logPrior⁻
+                p=1.0
                 println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
             elseif update == :MH
@@ -189,16 +191,13 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 logPrior⁻, ~ = log_prior(θ⁻)
                 θ.𝓛 += logPrior
                 𝓛⁻ += logPrior⁻
-
+                ∇𝓛⁻ = zeros(0)
+                invT⁻ = zeros(0,0)
                 # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
 
                 p = exp(𝓛⁻ - θ.𝓛)
                 # println("   current p: $p")
-                if rand() < p
-                    θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, zeros(0), zeros(0,0), π⁻, πᵦ⁻
-                    changed = true
-                    burned += 1
-                end
+
             elseif update == :langevin || update == :langevin_rand
                 # Use result from Choi
 
@@ -244,6 +243,11 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 if rand() < p
                     θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
                 end
+            end
+            if rand() < p
+                θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
+                changed = true
+                burned += 1
             end
         end
 
