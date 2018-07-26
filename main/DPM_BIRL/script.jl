@@ -3,7 +3,7 @@ using POMDPModels
 using POMDPToolbox
 
 srand(1)
-n_agents = 2
+n_agents = 1
 traj_per_agent = 50
 iterations = 150
 learning_rate = .1
@@ -49,7 +49,7 @@ using Plots
 
 fig = Plots.plot([ _log[:EVDs][i][1] for i in 1:size(_log[:EVDs],1)], title="EVD for langevin, 2 agents, 50 trajectories", label="EVD cluster#1", linewidth=1.5, color="blue")
 lhs = [ _log[:likelihoods][i][1] for i in 1:size(_log[:EVDs],1)]
-Plots.plot!(lhs, label="Likelihood cluster#1", linestyle=:dot, color="blue")
+Plots.plot(exp.(lhs), label="Likelihood cluster#1", linestyle=:dot, color="blue")
 fig = Plots.plot!([ _log[:EVDs][i][2,2] for i in 1:size(_log[:EVDs],1)], label="EVD cluster#2",  linewidth=1.5,color="red")
 lhs = [ _log[:likelihoods][i][2] for i in 1:size(_log[:EVDs],1)]
 Plots.plot!(lhs, label="Likelihood cluster#2", linestyle=:dot, color="red")
@@ -66,6 +66,18 @@ curr_reward = curr_cluster.rewards[1]
 @gif for evd in log[:EVDs]
 	heatmap(evd)
 end
+
+
+probs = _log[:acc_prob][:]
+probs = probs[probs .< 5]
+mean(probs)
+Plots.plot(probs, ylim=(-2,2))
+
+fig = Plots.plot();
+for i in 1:3
+	fig = Plots.plot!(map(x->x[1].values[i], _log[:rewards]))
+end
+fig
 
 
 

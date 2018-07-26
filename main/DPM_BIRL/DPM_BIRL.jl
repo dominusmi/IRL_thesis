@@ -70,6 +70,7 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
 """
 function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true, path_to_file=nothing, seed=1)
 
+    srand(seed)
     verbose ? println("Using $(update) update") : nothing
 
     if path_to_file !== nothing
@@ -120,7 +121,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
     use_clusters ? update_clusters!(c, mdp, κ, glb) : nothing
 
-    _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[], :acceptance_probability=>[])
+    _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[], :acceptance_probability=>[], :acc_prob=>[])
 
     σ = eye(n_features)*τ
     burned = 0
@@ -204,7 +205,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 logPrior, ∇logPrior = log_prior(θ)
                 logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
 
-                println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+                # println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
 
                 θ.𝓛 += logPrior
                 θ.∇𝓛 += ∇logPrior
@@ -239,16 +240,15 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 # p = percentage_likelihood * logpd⁻ / logpd
                 # p = exp( 𝓛⁻ + logpd⁻ - θ.𝓛 - logpd)
                 println("   current p: $p")
+                println("difference old-new: $(norm(θ.values-θ⁻.values))")
                 # println("   real p:    $( exp(𝓛⁻ - θ.𝓛) * exp(log_coef+logpd⁻ - log_coef-logpd))")
-                if rand() < p
-                    θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
-                end
             end
             if rand() < p
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
                 changed = true
                 burned += 1
             end
+            push!(_log[:acc_prob], p)
         end
 
         elapsed = toq()
@@ -263,7 +263,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             # push!(_log[:assignements], copy(c.N))
             if path_to_file == nothing
                 push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
-                push!(_log[:rewards], copy(c.rewards))
+                push!(_log[:rewards], copy.(c.rewards))
                 use_clusters ? push!(_log[:clusters], copy(c)) : nothing
 
                 if ground_truth !== nothing
@@ -277,9 +277,9 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 close(f)
             end
         elseif burned < burn_in
-            push!(_log[:rewards], c.rewards)
+            push!(_log[:rewards], copy(c.rewards))
         elseif burned == burn_in
-            push!(_log[:rewards], c.rewards)
+            push!(_log[:rewards], copy(c.rewards))
             println("Finished burn in")
             rewards = zeros(burn_in, n_features)
             @show size(_log[:rewards])
