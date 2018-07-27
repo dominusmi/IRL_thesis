@@ -8,12 +8,18 @@ mutable struct RewardFunction
     𝓛::Float64
     ∇𝓛::Array{<:AbstractFloat,1}
     RewardFunction(values::Array{<:Number}) = new(values)
+    RewardFunction(values::Array{<:Number},
+        π::Policy,
+        πᵦ::Array{<:AbstractFloat,2},
+        invT::Array{<:AbstractFloat,2},
+        𝓛::Float64,
+        ∇𝓛::Array{<:AbstractFloat,1}) = new(values, π, πᵦ, invT, 𝓛, ∇𝓛)
 end
 
 
 function copy(r::RewardFunction)
     RewardFunction(copy(r.values), DiscreteValueIteration.Policy(r.π),
-                    copy(r.πᵦ), copy(r.invT), copy(𝓛), copy(∇𝓛))
+                    copy(r.πᵦ), copy(r.invT), copy(r.𝓛), copy(r.∇𝓛))
 end
 
 function +(r::RewardFunction, values::Array{<:AbstractFloat})

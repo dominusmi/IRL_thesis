@@ -37,8 +37,7 @@ c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=con
 							burn_in=100, use_clusters=false, path_to_file="$(pwd())", seed=1)
 
 
-d = load("MH_false.jld")
-
+d = load("MH_1_false.jld")
 keys_d = collect(keys(d))
 l_keys = ismatch.(r"likelihood\_[0-9]+", keys_d)
 likelihoods = []
@@ -46,4 +45,23 @@ for index in 1:sum(l_keys)
 	push!(likelihoods, d["likelihood_$index"])
 end
 
-Plots.plot(likelihoods)
+Plots.plot(likelihoods, title="Likelihood over 15398 accepted changes")
+savefig("likelihood_1.png")
+
+keys_d = collect(keys(d))
+r_keys = ismatch.(r"reward\_[0-9]+", keys_d)
+rewards = zeros(sum(r_keys), 100)
+for index in 1:sum(r_keys)
+	rewards[index,:] = d["reward_$index"]
+end
+
+fig = Plots.plot()
+for i in 1:size(rewards,2)
+	Plots.plot!(rewards[:,i])
+end
+fig
+
+Plots.plot()
+for i in 1:size(rewards,2)
+	Plots.plot!(cov(rewards[:,i]))
+end
