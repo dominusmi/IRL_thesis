@@ -125,6 +125,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
     σ = eye(n_features)*τ
     burned = 0
+    probabilities = []
     for t in 1:iterations
         changed = false
         tic()
@@ -148,13 +149,16 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
             elseif update == :MH
                 θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
+            else
+                θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
+                θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
             end
 
             # Find potential new reward
             if update == :langevin_rand
                 ϵ = rand(Normal(0,1), n_features)
-                # indeces = rand(n_features) .< 0.2
-                # ϵ[indeces] = 0.0
+                indeces = rand(n_features) .< 0.2
+                ϵ[indeces] = 0.0
                 θ⁻ = θ + α*θ.∇𝓛 + τ*ϵ
                 θ⁻.values ./= sum(abs.(θ⁻.values))
             elseif update == :MH
@@ -194,7 +198,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 𝓛⁻ += logPrior⁻
                 ∇𝓛⁻ = zeros(0)
                 invT⁻ = zeros(0,0)
-                # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+                println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
 
                 p = exp(𝓛⁻ - θ.𝓛)
                 # println("   current p: $p")
@@ -205,12 +209,12 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 logPrior, ∇logPrior = log_prior(θ)
                 logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
 
-                # println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+                println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
 
-                θ.𝓛 += logPrior
-                θ.∇𝓛 += ∇logPrior
-                𝓛⁻ += logPrior⁻
-                ∇𝓛⁻ += ∇logPrior⁻
+                # θ.𝓛 += logPrior
+                # θ.∇𝓛 += ∇logPrior
+                # 𝓛⁻ += logPrior⁻
+                # ∇𝓛⁻ += ∇logPrior⁻
 
                 #### CHOI SHIT ####
 
@@ -226,7 +230,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 logpd⁻ = proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ)
                 logpd = proposal_distribution(θ, θ⁻, θ.∇𝓛, τ)
 
-                log_coef = log(inv(2*3.1415*τ^2)^(n_features/2))
+                # log_coef = log(inv(2*3.1415*τ^2)^(n_features/2))
 
                 println("log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), logpd: $(@sprintf("%.2f", logpd)), logpd⁻: $(@sprintf("%.2f", logpd⁻)))")
                 # print("𝓛: ($(@sprintf("%.2f", exp(θ.𝓛))), 𝓛⁻ $(@sprintf("%.2f", exp(𝓛⁻))), $(@sprintf("%.2f", log_coef+logpd)), $(@sprintf("%.2f", log_coef+logpd⁻)))")
@@ -293,6 +297,12 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
             burn_in = 0
             burned = 0
         end
+    end
+
+    if path_to_file !== nothing
+        f = jldopen(path_to_file, "r+")
+        write(f, "acceptance_probabilities", _log[:acc_prob])
+        close(f)
     end
 
     c, _log

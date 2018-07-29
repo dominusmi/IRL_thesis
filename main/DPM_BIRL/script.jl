@@ -5,7 +5,7 @@ using POMDPToolbox
 srand(1)
 n_agents = 1
 traj_per_agent = 50
-iterations = 150
+iterations = 500
 learning_rate = .1
 confidence = 1.0
 ϕ = eye(100)
@@ -33,7 +33,7 @@ ground_truth = Dict(:policy=>policies, :rewards=>map(x->x.reward_values, mdps), 
 
 c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=confidence, κ=0.1,
 							ground_truth = ground_truth, verbose = true, update = :langevin_rand,
-							burn_in=1, use_clusters=true)
+							burn_in=50, use_clusters=false, seed=1)
 
 
 for (j, policy) in enumerate(policies)
@@ -109,6 +109,33 @@ for trajectory in χ
 end
 llh
 
+
+#### Acceptance Probability ####
+temp = abs.(_log[:acc_prob]) .< 3.
+acc_prob = _log[:acc_prob][temp]
+# temp = abs.(_log[:acc_prob]) .< 1e-3
+Plots.plot(acc_prob, ylim=(-.1,2.),
+			title="Acceptance probabilities using Langevin update\nNo prior, normalised reward",
+			xlabel="Iterations",
+			ylabel="P")
+savefig("langevin-acc-prob-no-prior-norm-reward.png")
+
+#### Likelihoods ####
+Plots.plot([ _log[:likelihoods][i][1] for i in 1:size(_log[:likelihoods],1)],
+			title="Likelihoods using Langevin update\nNo prior, normalised reward",
+			xlabel="Iteration",
+			ylabel="Likelihood")
+savefig("langevin-no-prior-norm-reward.png")
+
+#### Rewards ####
+rewards = zeros(449, 100)
+for i in 1:size(_log[:rewards],1)
+	rewards[i,:] = _log[:rewards][i][1].values
+end
+Plots.plot( rewards, legend=false)
+savefig("langevin-no-prior.png")
+
+Plots.plot([cov(rewards[:,i]) for i in 1:100])
 
 using JLD
 load("$(pwd())/MH_test.jld")

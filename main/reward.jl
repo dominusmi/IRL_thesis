@@ -44,9 +44,9 @@ end
     Calculates proposal value of new reward
 """
 function proposal_distribution(r₁::RewardFunction, r₂::RewardFunction, ∇logTarget::Array, τ)
-    D = size(r₁.values,1)
+    # D = size(r₁.values,1)
     g = r₂.values - r₁.values - 0.25*τ^2 * ∇logTarget
-    g = inv(-2*τ^2) * norm(g)^2
+    g = -inv(-2*τ^2) * norm(g)^2
     # This is the correct calculation, but the initial constant cancels out
     # g = inv( (2*π*τ^2)^(D/2) ) * exp(g)
     g
@@ -73,5 +73,5 @@ end
 function log_prior(r::RewardFunction)
     # variance = σ²
     var = 1.0
-    sum(-(r.values'*r.values)./(2*var)), -r.values ./ var
+    sum(-(r.values'*r.values)./(2*var^2))+log(inv(sqrt(2*3.1415*var))), -r.values ./ var
 end

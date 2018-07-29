@@ -36,7 +36,8 @@ c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; α=learning_rate, β=con
 							ground_truth = ground_truth, verbose = false, update = :MH,
 							burn_in=100, use_clusters=false, path_to_file="$(pwd())", seed=1)
 
-
+using JLD
+using Plots
 d = load("MH_1_false.jld")
 keys_d = collect(keys(d))
 l_keys = ismatch.(r"likelihood\_[0-9]+", keys_d)
@@ -45,7 +46,7 @@ for index in 1:sum(l_keys)
 	push!(likelihoods, d["likelihood_$index"])
 end
 
-Plots.plot(likelihoods, title="Likelihood over 15398 accepted changes")
+Plots.plot(likelihoods, title="Likelihood over $(size(likelihoods,1)) accepted changes")
 savefig("likelihood_1.png")
 
 keys_d = collect(keys(d))
@@ -55,13 +56,17 @@ for index in 1:sum(r_keys)
 	rewards[index,:] = d["reward_$index"]
 end
 
-fig = Plots.plot()
-for i in 1:size(rewards,2)
+fig = Plots.plot(title="5 Sampled Rewards over $(size(likelihoods,1))")
+# for i in 1:size(rewards,2)
+for i in 1:5
 	Plots.plot!(rewards[:,i])
 end
 fig
 
-Plots.plot()
+covariances = []
 for i in 1:size(rewards,2)
-	Plots.plot!(cov(rewards[:,i]))
+	push!(covariances,(cov(rewards[:,i])))
 end
+Plots.plot(covariances, title="Covariance per reward feature",
+			xlabel="Reward Feature Index",
+			ylabel="Covariance")
