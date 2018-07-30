@@ -6,7 +6,7 @@ srand(1)
 n_agents = 1
 traj_per_agent = 50
 iterations = 500
-learning_rate = .1
+learning_rate = .25
 confidence = 1.0
 ϕ = eye(100)
 χ = Array{MDPHistory}(0)
@@ -71,7 +71,8 @@ end
 probs = _log[:acc_prob][:]
 probs = probs[probs .< 5]
 mean(probs)
-Plots.plot(probs, ylim=(-2,2))
+Plots.plot(probs, ylim=(0,2), title="Acceptance probs", xlab="Iterations", ylab="Probability")
+savefig("acceptance - prior, norm reward")
 
 fig = Plots.plot();
 for i in 1:3
@@ -118,14 +119,14 @@ Plots.plot(acc_prob, ylim=(-.1,2.),
 			title="Acceptance probabilities using Langevin update\nNo prior, normalised reward",
 			xlabel="Iterations",
 			ylabel="P")
-savefig("langevin-acc-prob-no-prior-norm-reward.png")
+savefig("langevin acc prob - prior, norm-reward.png")
 
 #### Likelihoods ####
 Plots.plot([ _log[:likelihoods][i][1] for i in 1:size(_log[:likelihoods],1)],
-			title="Likelihoods using Langevin update\nNo prior, normalised reward",
+			title="Likelihoods using Langevin update",
 			xlabel="Iteration",
 			ylabel="Likelihood")
-savefig("langevin-no-prior-norm-reward.png")
+savefig("langevin likelihood - prior, norm reward.png")
 
 #### Rewards ####
 rewards = zeros(449, 100)
@@ -133,7 +134,7 @@ for i in 1:size(_log[:rewards],1)
 	rewards[i,:] = _log[:rewards][i][1].values
 end
 Plots.plot( rewards, legend=false)
-savefig("langevin-no-prior.png")
+savefig("langevin rewards, prior norm reward.png")
 
 Plots.plot([cov(rewards[:,i]) for i in 1:100])
 

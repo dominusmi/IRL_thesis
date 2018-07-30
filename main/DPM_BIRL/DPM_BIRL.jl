@@ -209,12 +209,16 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 logPrior, ∇logPrior = log_prior(θ)
                 logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
 
-                println("    before prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
 
-                # θ.𝓛 += logPrior
-                # θ.∇𝓛 += ∇logPrior
-                # 𝓛⁻ += logPrior⁻
-                # ∇𝓛⁻ += ∇logPrior⁻
+                println("    ante-prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: ($(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: ($(@sprintf("%.2f", norm(∇𝓛⁻)))")
+
+                θ.𝓛 += logPrior
+                θ.∇𝓛 += ∇logPrior
+                𝓛⁻ += logPrior⁻
+                ∇𝓛⁻ += ∇logPrior⁻
+
+                println("    post-prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: ($(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: ($(@sprintf("%.2f", norm(∇𝓛⁻)))")
+
 
                 #### CHOI SHIT ####
 
