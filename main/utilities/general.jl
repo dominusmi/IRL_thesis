@@ -1,3 +1,20 @@
+import Base: +,-,/,*,convert
+
++(x::LoggedFloat, y::Number) = x.value+y
+-(x::LoggedFloat, y::Number) = x.value-y
+*(x::LoggedFloat, y::Number) = x.value*y
+/(x::LoggedFloat, y::Number) = x.value/y
++(y::Number, x::LoggedFloat) = x+y
+-(y::Number, x::LoggedFloat) = y-x.value
+*(y::Number, x::LoggedFloat) = x*y
+/(y::Number, x::LoggedFloat) = y/x.value
++(x::LoggedFloat, y::LoggedFloat) = LoggedFloat(x.value+y.value)
+-(x::LoggedFloat, y::LoggedFloat) = LoggedFloat(x.value-y.value)
+*(x::LoggedFloat, y::LoggedFloat) = LoggedFloat(x.value*y.value)
+/(x::LoggedFloat, y::LoggedFloat) = LoggedFloat(x.value/y.value)
+-(x::LoggedFloat) = -x.value
+convert(::Type{Float64}, x::LoggedFloat) = x.value
+
 """
     Calculates inv(I-γPₚᵢ), where Pₚᵢ is the matrix of transition probabilities
     of size SxS
@@ -80,4 +97,30 @@ end
 
 function load_reward_log(path_to_file)
     load(path_to_file)
+end
+
+"""
+    Tunes τ in order to get an acceptance rate between 0.4 and 0.8
+"""
+function update_τ(τ, t, changed_log)
+    change = 0.
+    t>=20 ? println("Last update: $(τ.last_modified), current rate: $(sum(changed_log[t-19:t])/20)") : nothing
+    if t >= 20 && t-τ.last_modified >= 5
+        acc_rate = sum(changed_log[t-19:t])/20
+        if acc_rate < 0.4
+            change = -τ/10
+        # elseif acc_rate < 0.5
+            # τ *= 0.9
+        elseif acc_rate > 0.7
+            # change = (1-τ)/10
+            change = τ/10
+        # elseif acc_rate > 0.7
+            # τ *= 1.1
+        end
+        if abs(change) > 1e-4
+            τ = LoggedFloat(τ+change, t)
+            println("Acceptance rate was $acc_rate, changed τ to $(τ.value)")
+        end
+    end
+    τ
 end

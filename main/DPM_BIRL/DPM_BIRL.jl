@@ -21,12 +21,20 @@ immutable Globals
     ϕ::Array{Float64,2}
 end
 
+immutable LoggedFloat <: AbstractFloat
+    value::AbstractFloat
+    last_modified::Integer
+    LoggedFloat(x) = new(x,0)
+    LoggedFloat(x::AbstractFloat, y::Integer) = new(x,y)
+end
+
 include("../reward.jl")
 include("../cluster.jl")
 include("../utilities/gridworld.jl")
 include("../utilities/policy.jl")
 include("../utilities/general.jl")
 include("../utilities/trajectory.jl")
+
 
 # Logs a EVD matrix, where the rows are the ground-truths,
 # and the columns are the EVD with respect to the reward functions
@@ -68,7 +76,7 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
     κ:              concentration parameter for DPM
     burn_in:        number of iterations not to record (at the beginning)
 """
-function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true, path_to_file=nothing, seed=1)
+function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5, use_clusters=true, path_to_file=nothing, seed=1)
 
     srand(seed)
     verbose ? println("Using $(update) update") : nothing
@@ -79,7 +87,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
         close(f)
     end
 
-    τ = sqrt(2*α)
+    α = τ^2/2
 
     γ = mdp.discount_factor
     states = ordered_states(mdp)
@@ -123,9 +131,14 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
     _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[], :acceptance_probability=>[], :acc_prob=>[])
 
+    _log[:rewards] = [copy.(c.rewards)]
+
     σ = eye(n_features)*τ
     burned = 0
     probabilities = []
+
+    changed_log = Array{Bool}(iterations) .= false
+
     for t in 1:iterations
         changed = false
         tic()
@@ -210,14 +223,14 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
 
 
-                println("    ante-prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: ($(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: ($(@sprintf("%.2f", norm(∇𝓛⁻)))")
+                println("    ante-prior log 𝓛: $(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: $(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: $(@sprintf("%.2f", norm(∇𝓛⁻)))")
 
                 θ.𝓛 += logPrior
                 θ.∇𝓛 += ∇logPrior
                 𝓛⁻ += logPrior⁻
                 ∇𝓛⁻ += ∇logPrior⁻
 
-                println("    post-prior log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: ($(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: ($(@sprintf("%.2f", norm(∇𝓛⁻)))")
+                println("    post-prior log 𝓛: $(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: $(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: $(@sprintf("%.2f", norm(∇𝓛⁻)))")
 
 
                 #### CHOI SHIT ####
@@ -236,22 +249,14 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
                 # log_coef = log(inv(2*3.1415*τ^2)^(n_features/2))
 
-                println("log 𝓛: ($(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), logpd: $(@sprintf("%.2f", logpd)), logpd⁻: $(@sprintf("%.2f", logpd⁻)))")
+                println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), logpd: $(@sprintf("%.2f", logpd)), logpd⁻: $(@sprintf("%.2f", logpd⁻)))")
                 # print("𝓛: ($(@sprintf("%.2f", exp(θ.𝓛))), 𝓛⁻ $(@sprintf("%.2f", exp(𝓛⁻))), $(@sprintf("%.2f", log_coef+logpd)), $(@sprintf("%.2f", log_coef+logpd⁻)))")
 
 
                 p = exp(𝓛⁻-θ.𝓛 + logpd⁻-logpd)
-                # p =  (𝓛⁻/θ.𝓛) * logpd⁻ / logpd
-                # p =  𝓛⁻ / θ.𝓛 * logpd⁻ / logpd
-
-
-                # p = percentage_likelihood * logpd⁻ / logpd
-                # p = exp( 𝓛⁻ + logpd⁻ - θ.𝓛 - logpd)
                 println("   current p: $p")
-                println("difference old-new: $(norm(θ.values-θ⁻.values))")
-                # println("   real p:    $( exp(𝓛⁻ - θ.𝓛) * exp(log_coef+logpd⁻ - log_coef-logpd))")
             end
-            if rand() < p
+            if p > 1. || rand() < p
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
                 changed = true
                 burned += 1
@@ -261,23 +266,26 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
 
         elapsed = toq()
 
+
+
+
         if changed
             println("Burned: $burned")
+            changed_log[t] = true
         end
 
-        # Log EVD
         verbose ? println("Iteration number $t took $elapsed seconds") : nothing
-        if burned > burn_in
+        if burned > burn_in && changed
             # push!(_log[:assignements], copy(c.N))
             if path_to_file == nothing
                 push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
                 push!(_log[:rewards], copy.(c.rewards))
                 use_clusters ? push!(_log[:clusters], copy(c)) : nothing
 
-                if ground_truth !== nothing
-                    log_evd!(_log[:EVDs], mdp, c.rewards, ground_truth)
-                    verbose ? show(_log[:EVDs][end]) : nothing
-                end
+                # if ground_truth !== nothing
+                    # log_evd!(_log[:EVDs], mdp, c.rewards, ground_truth)
+                    # verbose ? show(_log[:EVDs][end]) : nothing
+                # end
             elseif path_to_file !== nothing && changed
                 f = jldopen(path_to_file, "r+")
                 write(f, "reward_$burned", c.rewards[1].values)
@@ -285,23 +293,35 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; α=0.1, κ=1., β=0.5, ground_truth =
                 close(f)
             end
         elseif burned < burn_in
-            push!(_log[:rewards], copy(c.rewards))
+            push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
+            push!(_log[:rewards], copy.(c.rewards))
         elseif burned == burn_in
-            push!(_log[:rewards], copy(c.rewards))
+            push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
+            push!(_log[:rewards], copy.(c.rewards))
             println("Finished burn in")
-            rewards = zeros(burn_in, n_features)
-            @show size(_log[:rewards])
-            for i in 1:burn_in
-                rewards[i,:] = _log[:rewards][i][1].values
-            end
+            ### Burn in covariance calculation ###
+            # rewards = zeros(burn_in, n_features)
+            # for i in 1:burn_in
+                # rewards[i,:] = _log[:rewards][i][1].values
+            # end
             # σ = σ .* [sqrt(cov(rewards[rewards[:,1].!==0.0,i])) for i in 1:n_features]
-            _log[:rewards] = []
+            # _log[:rewards] = []
             # @show σ
             # println("Found new covariance, sample: $(σ[1:3,1:3])")
-            burn_in = 0
+
+
+            burn_in = -1
             burned = 0
         end
+
+        # Update τ to get acceptance rate between 0.4 and 0.8
+        τ = update_τ(τ, t, changed_log)
+
+        println("Current τ: $τ")
     end
+
+    _log[:changed] = changed_log
+
 
     if path_to_file !== nothing
         f = jldopen(path_to_file, "r+")
