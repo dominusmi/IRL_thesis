@@ -7,7 +7,6 @@ mutable struct Clusters
     𝓛ᵪ::Array{<:AbstractFloat}      # Trajectories likelihood
     rewards::Array{RewardFunction}  # Reward function
     ids::Array{Int64}
-
 end
 function Clusters(assignements)
     K = unique(unique(assignements))

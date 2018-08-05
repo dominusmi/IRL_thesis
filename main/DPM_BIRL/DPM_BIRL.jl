@@ -106,11 +106,16 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
     #### Initialisation ####
     # Initialise clusters
-    # K = n_trajectories
+    if use_clusters
+        K = n_trajectories
+        assignements    = collect(1:n_trajectories)
+    else
+        K = 1
+        assignements = fill(1,n_trajectories)
+    end
     # K = 5
-    K = 1
-    # assignements    = collect(1:n_trajectories)
-    assignements    = rand(1:K, n_trajectories)
+    # K = 1
+    # assignements    = rand(1:K, n_trajectories)
     # assignements = fill(1,n_trajectories)
 
     N = map(x->sum(assignements .== x), 1:K)
@@ -140,8 +145,8 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
     changed_log = Array{Bool}(iterations) .= false
 
     for t in 1:iterations
-        changed = false
         tic()
+        changed = false
 
         if use_clusters
             updated_clusters_id = Set()
@@ -202,7 +207,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 # 𝓛⁻ += logPrior⁻
                 # ∇𝓛⁻ += ∇logPrior⁻
                 p=1.0
-                println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
+                # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
             elseif update == :MH
                 logPrior, ~ = log_prior(θ)
@@ -211,26 +216,22 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 𝓛⁻ += logPrior⁻
                 ∇𝓛⁻ = zeros(0)
                 invT⁻ = zeros(0,0)
-                println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
-
+                # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
                 p = exp(𝓛⁻ - θ.𝓛)
-                # println("   current p: $p")
-
             elseif update == :langevin || update == :langevin_rand
                 # Use result from Choi
-
                 logPrior, ∇logPrior = log_prior(θ)
                 logPrior⁻, ∇logPrior⁻ = log_prior(θ⁻)
 
 
-                println("    ante-prior log 𝓛: $(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: $(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: $(@sprintf("%.2f", norm(∇𝓛⁻)))")
+                # println("    ante-prior log 𝓛: $(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: $(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: $(@sprintf("%.2f", norm(∇𝓛⁻)))")
 
                 θ.𝓛 += logPrior
                 θ.∇𝓛 += ∇logPrior
                 𝓛⁻ += logPrior⁻
                 ∇𝓛⁻ += ∇logPrior⁻
 
-                println("    post-prior log 𝓛: $(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: $(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: $(@sprintf("%.2f", norm(∇𝓛⁻)))")
+                # println("    post-prior log 𝓛: $(@sprintf("%.2f", θ.𝓛)), ∇log𝓛: $(norm(θ.∇𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), ∇log𝓛: $(@sprintf("%.2f", norm(∇𝓛⁻)))")
 
 
                 #### CHOI SHIT ####
@@ -249,33 +250,26 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
                 # log_coef = log(inv(2*3.1415*τ^2)^(n_features/2))
 
-                println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), logpd: $(@sprintf("%.2f", logpd)), logpd⁻: $(@sprintf("%.2f", logpd⁻)))")
+                # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻)), logpd: $(@sprintf("%.2f", logpd)), logpd⁻: $(@sprintf("%.2f", logpd⁻)))")
                 # print("𝓛: ($(@sprintf("%.2f", exp(θ.𝓛))), 𝓛⁻ $(@sprintf("%.2f", exp(𝓛⁻))), $(@sprintf("%.2f", log_coef+logpd)), $(@sprintf("%.2f", log_coef+logpd⁻)))")
 
 
                 p = exp(𝓛⁻-θ.𝓛 + logpd⁻-logpd)
-                println("   current p: $p")
+                # println("   current p: $p")
             end
             if p > 1. || rand() < p
                 θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
-                changed = true
                 burned += 1
+                # Only count cluster #1 out of simplicity
+                if k==1     changed = true;     end
             end
             push!(_log[:acc_prob], p)
         end
 
         elapsed = toq()
 
-
-
-
-        if changed
-            println("Burned: $burned")
-            changed_log[t] = true
-        end
-
         verbose ? println("Iteration number $t took $elapsed seconds") : nothing
-        if burned > burn_in && changed
+        if t > burn_in
             # push!(_log[:assignements], copy(c.N))
             if path_to_file == nothing
                 push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
@@ -292,10 +286,10 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 write(f, "likelihood_$burned", c.rewards[1].𝓛)
                 close(f)
             end
-        elseif burned < burn_in
+        elseif t < burn_in
             push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
             push!(_log[:rewards], copy.(c.rewards))
-        elseif burned == burn_in
+        elseif t == burn_in
             push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
             push!(_log[:rewards], copy.(c.rewards))
             println("Finished burn in")
@@ -308,16 +302,14 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
             # _log[:rewards] = []
             # @show σ
             # println("Found new covariance, sample: $(σ[1:3,1:3])")
-
-
-            burn_in = -1
-            burned = 0
         end
 
         # Update τ to get acceptance rate between 0.4 and 0.8
+        # Note: out of simplicity, changed refers to cluster #1 only
+        changed_log[t] = changed
         τ = update_τ(τ, t, changed_log)
 
-        println("Current τ: $τ")
+        # println("Current τ: $τ")
     end
 
     _log[:changed] = changed_log
