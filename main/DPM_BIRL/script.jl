@@ -3,22 +3,22 @@ include("../result_explorer.jl")
 using POMDPModels
 using POMDPToolbox
 
-ϕ = zeros(100,10)
-for j in 0:9
-	for i in j*10:(j+1)*10-1
-		ϕ[i+1,j+1] = 1
-	end
-end
+# ϕ = zeros(100,10)
+# for j in 0:9
+# 	for i in j*10:(j+1)*10-1
+# 		ϕ[i+1,j+1] = 1
+# 	end
+# end
 
-problem_seed = 10
+problem_seed = 1
 srand(problem_seed)
 
 n_agents = 1
-traj_per_agent = 30
-iterations = 400
+traj_per_agent = 20
+iterations = 300
 confidence = 1.0
 burn_in = 50
-# ϕ = eye(100)
+ϕ = eye(100)
 χ = Array{MDPHistory}(0)
 mdps = []
 policies = []

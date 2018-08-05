@@ -178,15 +178,16 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 indeces = rand(n_features) .< 0.2
                 ϵ[indeces] = 0.0
                 θ⁻ = θ + α*θ.∇𝓛 + τ*ϵ
-                θ⁻.values ./= sum(abs.(θ⁻.values))
+                θ⁻.weights ./= sum(abs.(θ⁻.weights))
             elseif update == :MH
                 # ϵ = rand(Normal(0,1), n_features)
                 ϵ = rand(MultivariateNormal(σ))
                 θ⁻ = θ + ϵ
             else
                 θ⁻ = θ + α*θ.∇𝓛
-                θ⁻.values ./= sum(abs.(θ⁻.values))
+                θ⁻.weights ./= sum(abs.(θ⁻.weights))
             end
+            θ⁻.values = values(θ⁻, glb.ϕ)
 
             # Solve everything for potential new reward
             π⁻  = solve_mdp(mdp, θ⁻)
@@ -208,7 +209,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 # ∇𝓛⁻ += ∇logPrior⁻
                 p=1.0
                 # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
-                θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
             elseif update == :MH
                 logPrior, ~ = log_prior(θ)
                 logPrior⁻, ~ = log_prior(θ⁻)
@@ -258,7 +258,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 # println("   current p: $p")
             end
             if p > 1. || rand() < p
-                θ.values, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ = θ⁻.values, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻
+                θ.weights, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ, θ.values = θ⁻.weights, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻, values(θ⁻, glb.ϕ)
                 burned += 1
                 # Only count cluster #1 out of simplicity
                 if k==1     changed = true;     end
@@ -282,7 +282,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 # end
             elseif path_to_file !== nothing && changed
                 f = jldopen(path_to_file, "r+")
-                write(f, "reward_$burned", c.rewards[1].values)
+                write(f, "reward_$burned", c.rewards[1].weights)
                 write(f, "likelihood_$burned", c.rewards[1].𝓛)
                 close(f)
             end

@@ -64,9 +64,16 @@ end
 
 #### Rewards ####
 function log2reward(reward_log)
-	rewards = zeros(size(reward_log,1), 100)
+	rewards = zeros(size(reward_log,1), size(reward_log[1][1].values,1))
 	for i in 1:size(reward_log,1)-1
 		rewards[i,:] = reward_log[i][1].values
+	end
+	rewards
+end
+function log2weights(reward_log)
+	rewards = zeros(size(reward_log,1), size(reward_log[1][1].weights,1))
+	for i in 1:size(reward_log,1)-1
+		rewards[i,:] = reward_log[i][1].weights
 	end
 	rewards
 end

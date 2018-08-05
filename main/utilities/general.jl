@@ -27,7 +27,7 @@ function calInvTransition(mdp, πᵦ, γ)
 end
 
 """
-    Currently unused
+    Calculates the derivative of Q with respect to a specific feature
 """
 function caldQₖ!(dQₖ, mdp, invT, πᵦ, k, glb)
     states = ordered_states(mdp)

@@ -95,7 +95,7 @@ function generate_trajectories(mdp, policy, n=50)
         while true
             x = rand(1:mdp.size_x)
             y = rand(1:mdp.size_y)
-            manhattan([x,y], [3,3]) > 1 && break
+            manhattan([x,y], [3,3]) > 3 && break
         end
 
         # Generate trajectories
