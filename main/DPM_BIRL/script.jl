@@ -63,11 +63,12 @@ end
 
 summary, fig = summary_statistics(logs[1][:rewards], parameters)
 fig
-heatmap(reshape(mdps[1].reward_values, (10,10)))
+real = heatmap(reshape(mdps[1].reward_values, (10,10)))
 heatmap(reshape(mdps[2].reward_values, (10,10)))
-heatmap(reshape(summary[:reward_means], (10,10)))
+found = heatmap(reshape(summary[:reward_means], (10,10)))
 
-
+fig = Plots.plot(real, found, layout=(1,2), size=(1600,600), dpi=300, title="")
+savefig(fig, "Real vs Mean reward")
 
 for (j, policy) in enumerate(policies)
 	v = DPMBIRL.policy_evaluation(mdps[j], policy, η=.9, π_type=:ϵgreedy)

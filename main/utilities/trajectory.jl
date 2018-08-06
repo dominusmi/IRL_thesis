@@ -28,6 +28,17 @@ function trajectories_likelihood(mdp::GridWorld, π::Policy, trajectories::Array
 end
 
 """
+    Non-logged likelihood of a single state-action pair
+"""
+function state_action_likelihood(mdp::GridWorld, state_action::Tuple, πᵦ::Array{Float64,2}, glb)
+    # Calculate likelihood trajectory
+    sₕ = state_index(mdp, state_action[1])
+    aₕ = action_index(mdp, state_action[2])
+    πᵦ[sₕ,aₕ]
+end
+
+
+"""
     Trajectory likelihood given a policy
 """
 function trajectory_likelihood(mdp::GridWorld, trajectory::MDPHistory, πᵦ::Array{Float64,2}, glb)
