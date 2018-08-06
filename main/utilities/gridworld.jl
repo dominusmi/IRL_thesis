@@ -99,7 +99,7 @@ function generate_trajectories(mdp, policy, n=50)
         end
 
         # Generate trajectories
-        traj = sim(mdp, GridWorldState(x,y), max_steps=15) do s
+        traj = sim(mdp, GridWorldState(x,y), max_steps=100) do s
             a = action(policy, s)
 
             a_index = POMDPModels.a2int(a, mdp)+1
