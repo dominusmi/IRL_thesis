@@ -14,6 +14,7 @@ immutable Observation
 end
 Base.hash(a::Observation, h::UInt) = hash(a.s, hash(a.a, hash(:Observation, h)))
 Base.isequal(a::Observation, b::Observation) = Base.isequal(hash(a), hash(b))
+Base.copy(o::Observation) = Observation(copy(o.s),copy(o.a))
 
 immutable Goal
 	state::Integer
@@ -73,7 +74,8 @@ function traj2obs(mdp, trajectory::MDPHistory)
 		obs = Observation(sⁱ, aⁱ)
 		push!(observations,obs)
 	end
-	unique(observations)
+	# unique(observations)
+	observations
 end
 
 function sample(::Type{Goal}, p::Prior, goals_dict)
@@ -104,10 +106,20 @@ function CRP(assignements::Vector{<:Integer}, κ)
 end
 
 ### Initialise problem and generate trajectories
+srand(1)
 η, κ = 1.0, 1.0
 mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
-trajectories = DPMBIRL.generate_trajectories(mdp, policy, 10)
+# trajectories = DPMBIRL.generate_trajectories(mdp, policy, 10)
+trajectories = DPMBIRL.generate_subgoals_trajectories(mdp)
 observations = traj2obs(mdp, trajectories)
+
+fig = @gif for obs in observations
+	pos = DPMBIRL.i2s(mdp,obs.s)
+	println(pos)
+	scatter([pos[1]], [pos[2]], xlim=(0,10), ylim=(0,10))
+end
+fig
+
 
 ### Precompute all Q-values and their πᵦ
 n_states = size(states(mdp),1)-1
@@ -141,114 +153,125 @@ support_space_prior = support_space / sum(support_space)
 goals_prior = DiscretePrior( support_space_prior, Multinomial(1, support_space_prior) )
 
 ### Sample initial subgoal
-G = []
-push!(G, sample(Goal, goals_prior, goals_dict))
+function _test()
+	G = []
+	push!(G, sample(Goal, goals_prior, goals_dict))
 
-### Initialise assignements zᵢ
-Z = []
-zᵗ = ones(Integer, n_observations)
-push!(Z, zᵗ)
+	### Initialise assignements zᵢ
+	Z = []
+	zᵗ = ones(Integer, n_observations)
+	push!(Z, zᵗ)
 
-### Initialiase partitions
-partitions = Array{Partition}(0)
-push!(partitions, Partition(G[1], observations))
+	### Initialiase partitions
+	partitions = Array{Partition}(0)
+	push!(partitions, Partition(G[1], copy.(observations)))
 
-next_g = []
-next_z = zeros(Int64,n_observations)
-
-
-# Find prior on support set
-support_space_prior = support_space / sum(support_space)
-goals_prior = DiscretePrior( support_space_prior, Multinomial(1, support_space_prior) )
-
-### Sample initial subgoal
-G = []
-push!(G, sample(Goal, goals_prior, goals_dict))
-
-### Initialise assignements zᵢ
-Z = []
-zᵗ = ones(Integer, n_observations)
-push!(Z, zᵗ)
-
-### Initialiase partitions
-partitions = Array{Partition}(0)
-push!(partitions, Partition(G[1], observations))
-
-next_g = []
-next_z = zeros(Int64,n_observations)
-set_goals = Set{Goal}(values(goals_dict))
-current_goals = Set([G[1]])
-### Main loop
-for t in 1:1
-	zᵗ = Z[t]
-	gᵗ = G[t]
-	for p in partitions
-		gᵗ = p.g
-		prob_vector = zeros(n_support_states)
-		# Calculate likelihood for all possible subgoals
-		for (i,stateᵢ) in enumerate(goals_array)
-			gⱼ = goals_dict[stateᵢ]
-			llh = 0.
-			for oᵢ in p.O
-				llh += likelihood(oᵢ,gⱼ, η)
+	set_goals = Set{Goal}(values(goals_dict))
+	current_goals = Set([G[1]])
+	### Main loop
+	for t in 1:100
+		println("Iteration $t")
+		zᵗ = Z[t]
+		gᵗ = G[t]
+		for p in partitions
+			gᵗ = p.g
+			prob_vector = zeros(n_support_states)
+			# Calculate likelihood for all possible subgoals
+			for (i,stateᵢ) in enumerate(goals_array)
+				gⱼ = goals_dict[stateᵢ]
+				llh = 0.
+				for oᵢ in p.O
+					llh += likelihood(oᵢ,gⱼ, η)
+				end
+				prob_vector[i] = llh * prior(gⱼ, goals_prior)
 			end
-			prob_vector[i] = llh * prior(gⱼ, goals_prior)
+			# Sample from multinomial
+			s = rand( Multinomial(1, prob_vector / sum(prob_vector)) )
+			s = findfirst(x->x==1,s)
+
+			# Set new goal
+			updated_goal = goals_dict[goals_array[s]]
+			p.g = updated_goal
 		end
-		# Sample from multinomial
-		s = rand( Multinomial(1, prob_vector / sum(prob_vector)) )
-		s = findfirst(x->x==1,s)
-		@show s
-		break
-		# Set new goal
-		push!(next_g, collect(keys(goals_dict))[s])
-	end
 
-	@show next_g
-	next_z = zeros(Int64,n_observations)
-	CRP_vector = CRP(zᵗ, κ)
-	new_partitions = []
-	for (i,oᵢ) in enumerate(observations)
-		probs_vector = copy(CRP_vector)
-		for (j,p) in enumerate(partitions)
-			# j: cluster of g
-			### Calculate p(zᵢ=j|z,O,Rⱼ)
-			# P(zᵢ|z₋ᵢ) = #observations in zᵢ / n-1+η
-			# P(oᵢ|g_zᵢ) = likelihood of observation given assignement
-			probs_vector[j] *= likelihood(oᵢ, p.g, η)
-		end
-		# New subgoal
-		new_g = sample(Goal, goals_prior, goals_dict)
-		if new_g ∈ current_goals
-			# If sampled subgoal already in use, find in which partition
-			chosen = findfirst(x->x.g == new_g, partitions)
-		else
-			# Otherwise, prepare for new partition
-			probs_vector[end] *= likelihood(oᵢ, new_g, η)
+		next_z = zeros(Int64,n_observations)
 
-			# Normalise to get probabilities
-			probs_vector /= sum(probs_vector)
-			@show probs_vector
-			# Sample multinomial
-			s = rand( Multinomial(1,probs_vector) )
-			chosen = findfirst(x->x==1, s)
+		next_g = map(x->x.g, partitions)
+		current_goals = Set(next_g)
 
-			# Prepare for new partitions or set new assignement
-			if chosen == size(probs_vector,1)
-				push!(new_partitions, [i, new_g])
+		@show zᵗ
+		@show tally(zᵗ), size(partitions)
+		CRP_vector = CRP(zᵗ, κ)
+		@show size(CRP_vector)
+		_temp = map(x->x.g.state, partitions)
+		# @show _temp
+		# @show map(x->x.state, current_goals)
+		new_partitions = []
+		for (i,oᵢ) in enumerate(observations)
+			probs_vector = copy(CRP_vector)
+			for (j,p) in enumerate(partitions)
+				# j: cluster of g
+				### Calculate p(zᵢ=j|z,O,Rⱼ)
+				# P(zᵢ|z₋ᵢ) = n_observations in zᵢ / n-1+η
+				# P(oᵢ|g_zᵢ) = likelihood of observation given assignement
+				probs_vector[j] *= likelihood(oᵢ, p.g, η)
 			end
+			# New subgoal
+			new_g = sample(Goal, goals_prior, goals_dict)
+			if new_g ∈ current_goals
+				# If sampled subgoal already in use, find in which partition
+				# @show new_g.state
+				chosen = findfirst(x->x.g == new_g, partitions)
+				# @show chosen
+			else
+				# Otherwise, prepare for new partition
+				probs_vector[end] *= likelihood(oᵢ, new_g, η)
+
+				# Normalise to get probabilities
+				probs_vector /= sum(probs_vector)
+				# Sample multinomial
+				s = rand( Multinomial(1,probs_vector) )
+				chosen = findfirst(x->x==1, s)
+
+				# Prepare for new partitions or set new assignement
+				if chosen == size(probs_vector,1)
+					push!(new_partitions, [i, new_g])
+				end
+			end
+			# Set new assignement
+			if chosen == 0
+				@show "Chosen = 0 at observation $i"
+			end
+			next_z[i] = chosen
 		end
 
-		# Set new assignement
-		next_z[i] = chosen
-	end
-	# Add/remove partitions
-	post_process!(partitions, observations, zᵗ, next_z, new_partitions)
+		# Add/remove partitions
+		post_process!(partitions, observations, zᵗ, next_z, new_partitions, t)
 
-	push!(Z, next_z)
-	push!(G, next_g)
+		if t == 23
+			println("#########")
+			@show zᵗ
+			@show tally(zᵗ)
+			@show next_z
+			@show tally(next_z)
+			local partition_sizes = map(x->size(x.O,1), partitions)
+			@show partition_sizes
+			println("#########")
+		end
+
+		next_g = map(x->x.g, partitions)
+		current_goals = Set(next_g)
+
+		push!(Z, next_z)
+		push!(G, next_g)
+	end
+	Z,G
 end
 
-function post_process!(partitions,  observations, old_z, new_z, new_partitions)
+srand(1)
+_test()
+
+function post_process!(partitions,  observations, old_z, new_z, new_partitions, t)
 	new_ass_idx = size(partitions,1)+1
 
 	# Find assignements that changed
@@ -262,23 +285,58 @@ function post_process!(partitions,  observations, old_z, new_z, new_partitions)
 		for np in new_partitions
 			if np[2] == g
 				# Add them to temporary assignements
-				push!(temp_ass, observations[np[1]])
+				push!(temp_ass, copy(observations[np[1]]))
+				# update the assignement
+				new_z[np[1]] = size(partitions,1)+1
 			end
 		end
 		push!(partitions, Partition(g, temp_ass))
 	end
 
 	# Re-assign observations
-	for (obs_idx, p_idx) in enumerate(new_z[changed])
-		if p_idx != new_ass_idx
-			# Find old partition
-			old_partition_id = old_z[obs_index]
-			# Get observation
-			obs = observation[obs_idx]
-			# Remove obs from old partition
-			filter!(x->x==obs, partitions[ old_partition_id ] )
+	for obs_idx in find(changed.==true)
+		# New partition id
+		new_p_idx = new_z[obs_idx]
+		# Find old partition
+		old_p_idx = old_z[obs_idx]
+		# Get observation
+		obs = copy(observations[obs_idx])
+		# Remove obs from old partition
+		filter!(x->x!=obs, partitions[ old_p_idx ].O )
+		if new_p_idx < new_ass_idx
 			# Add observation to new partition
-			push!(partitions[p_idx], observations[obs_idx])
+			# For new partition, observation already moved earlier
+			push!(partitions[new_p_idx].O, obs)
 		end
+	end
+
+	# Find empty partitions and re-assign z
+	to_remove = Array{Integer}(0)
+	for (i,p) in reverse(collect(enumerate(partitions)))
+		if size(p.O,1) == 0
+			push!(to_remove, i)
+			new_z[ new_z .>= i ] -= 1
+		end
+	end
+	if t == 23
+		println("##### POSTPROCESS #####")
+		@show to_remove
+		local partition_sizes = map(x->size(x.O,1), partitions)
+		@show partition_sizes
+		@show tally(new_z)
+		println("#######################")
+	end
+	# if !isempty(to_remove)
+	# 	@show to_remove[1]
+	# 	@show size(partitions[1].O,1)
+	# end
+	# Remove partitions
+	# _tally = tally(new_z)
+	# to_remove = find(_tally .== 0)
+	for (i,rm) in enumerate(to_remove)
+		# rm-(i-1) to account for the already removed partitions
+		deleteat!(partitions, rm)
+		# deleteat!(partitions, rm-(i-1))
+		println("Removed partition $(rm-(i-1))")
 	end
 end

@@ -231,3 +231,41 @@ function log_likelihood(mdp::GridWorld, Q::Array{<:AbstractFloat,2}, trajectorie
     end
     llh
 end
+
+function generate_path_trajectories(mdp, states)
+    state_counter = 2
+    mdp.reward_states = [states[state_counter]]
+    policy = solve_mdp(mdp)
+    traj = sim(mdp, states[1], max_steps=1000) do s
+        if s ∈ states && s != states[end] && s != states[1]
+            state_counter += 1
+            mdp.reward_states = [states[state_counter]]
+            policy = solve_mdp(mdp)
+            # println("$s, $state_counter")
+        end
+        a = action(policy, s)
+
+        a_index = POMDPModels.a2int(a, mdp)+1
+        s_index = state_index(mdp, s)
+
+        return a
+    end
+end
+
+
+function generate_subgoals_trajectories(mdp)
+
+    tmp_mdp = copy(mdp)
+    tmp_mdp.reward_values[ tmp_mdp.reward_values .> 0. ] = 0.
+    tmp_mdp.reward_values = [1.]
+
+    states = [GridWorldState(1,1), GridWorldState(2,7), GridWorldState(8,7), GridWorldState(8,1)]
+
+    tmp_mdp.terminals =  Set([states[end]])
+    generate_path_trajectories(tmp_mdp, states)
+end
+
+
+# function gridworld_heatmap(mdp)
+#     Plots.heatmap(reshape(mdp.reward_values,(10,10)))
+# end
