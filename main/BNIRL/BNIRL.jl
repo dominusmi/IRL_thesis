@@ -169,10 +169,11 @@ function _test()
 	set_goals = Set{Goal}(values(goals_dict))
 	current_goals = Set([G[1]])
 	### Main loop
-	for t in 1:100
+	for t in 1:10000
 		println("Iteration $t")
 		zᵗ = Z[t]
 		gᵗ = G[t]
+		# Sample new subgoals
 		for p in partitions
 			gᵗ = p.g
 			prob_vector = zeros(n_support_states)
@@ -199,13 +200,8 @@ function _test()
 		next_g = map(x->x.g, partitions)
 		current_goals = Set(next_g)
 
-		@show zᵗ
-		@show tally(zᵗ), size(partitions)
 		CRP_vector = CRP(zᵗ, κ)
-		@show size(CRP_vector)
 		_temp = map(x->x.g.state, partitions)
-		# @show _temp
-		# @show map(x->x.state, current_goals)
 		new_partitions = []
 		for (i,oᵢ) in enumerate(observations)
 			probs_vector = copy(CRP_vector)
@@ -248,16 +244,6 @@ function _test()
 		# Add/remove partitions
 		post_process!(partitions, observations, zᵗ, next_z, new_partitions, t)
 
-		if t == 23
-			println("#########")
-			@show zᵗ
-			@show tally(zᵗ)
-			@show next_z
-			@show tally(next_z)
-			local partition_sizes = map(x->size(x.O,1), partitions)
-			@show partition_sizes
-			println("#########")
-		end
 
 		next_g = map(x->x.g, partitions)
 		current_goals = Set(next_g)
@@ -269,7 +255,19 @@ function _test()
 end
 
 srand(1)
-_test()
+Z,G = _test()
+
+
+
+@gif for goals in G[end-100:end]
+	pos = zeros(size(goals,1),2)
+	for (i,goal) in enumerate(goals)
+		tmp = DPMBIRL.i2s(mdp, goal.state)
+		pos[i,:] = [tmp[1],tmp[2]]
+	end
+	scatter(pos[:,1], pos[:,2], xlim=(0,10), ylim=(0,10))
+end
+
 
 function post_process!(partitions,  observations, old_z, new_z, new_partitions, t)
 	new_ass_idx = size(partitions,1)+1
@@ -313,19 +311,14 @@ function post_process!(partitions,  observations, old_z, new_z, new_partitions, 
 	# Find empty partitions and re-assign z
 	to_remove = Array{Integer}(0)
 	for (i,p) in reverse(collect(enumerate(partitions)))
+		# Enumeration is reversed so that one can simply remove from high to low
+		# without causing problems with indexes changing
 		if size(p.O,1) == 0
 			push!(to_remove, i)
 			new_z[ new_z .>= i ] -= 1
 		end
 	end
-	if t == 23
-		println("##### POSTPROCESS #####")
-		@show to_remove
-		local partition_sizes = map(x->size(x.O,1), partitions)
-		@show partition_sizes
-		@show tally(new_z)
-		println("#######################")
-	end
+
 	# if !isempty(to_remove)
 	# 	@show to_remove[1]
 	# 	@show size(partitions[1].O,1)
@@ -334,8 +327,9 @@ function post_process!(partitions,  observations, old_z, new_z, new_partitions, 
 	# _tally = tally(new_z)
 	# to_remove = find(_tally .== 0)
 	for (i,rm) in enumerate(to_remove)
-		# rm-(i-1) to account for the already removed partitions
 		deleteat!(partitions, rm)
+		# Was done before enumeration was reversed, keep for record
+		# rm-(i-1) to account for the already removed partitions
 		# deleteat!(partitions, rm-(i-1))
 		println("Removed partition $(rm-(i-1))")
 	end
