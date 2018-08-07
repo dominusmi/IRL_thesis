@@ -71,28 +71,5 @@ function trajectory_likelihood(real_mdp::GridWorld, trajectory::MDPHistory, rewa
     πᵦ = calπᵦ(mdp,π.qmat,glb)
 
     log_likelihood = trajectory_likelihood(mdp, trajectory, πᵦ, glb)
-    # Calculate likelihood trajectory
-    # likelihood = 0.0
-    # for state in trajectory.state_hist[1:end-2]
-    #
-    #     # Get state index and optimal action (int)
-    #     s = state_index(mdp, state)
-    #     optimal = POMDPModels.a2int( action(π, state), mdp)+1
-    #
-    #     # Compute optimal Q value for the step
-    #     Qᵒ = π.qmat[s,optimal]
-    #     nominator = exp(η*Qᵒ)
-    #
-    #     denominator = 1.0
-    #     for a in POMDPModels.actions(mdp)
-    #         # check if action inbounds
-    #         if POMDPModels.inbounds(mdp, state, a)
-    #             a = POMDPModels.a2int( action(π, state), mdp )+1
-    #             Q = π.qmat[s,a]
-    #             denominator += exp(η*Q)
-    #         end
-    #     end
-    #     likelihood = -log(nominator / denominator)
-    # end
     log_likelihood
 end

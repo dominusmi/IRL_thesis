@@ -1,6 +1,13 @@
 import Base.+, Base.-, Base.copy
 
-mutable struct RewardFunction
+"""
+    A reward function is a type for which two things must be defined:
+        weights (feature space) and values (real space)
+"""
+abstract type RewardFunction end
+
+
+mutable struct DPMRewardFunction <: RewardFunction
     weights::Array{<:Number}
     π::Policy
     πᵦ::Array{<:AbstractFloat,2}
@@ -8,22 +15,22 @@ mutable struct RewardFunction
     𝓛::Float64
     ∇𝓛::Array{<:AbstractFloat,1}
     values::Array{<:Number}
-    RewardFunction(values::Array{<:Number}) = new(values)
-    RewardFunction(values::Array{<:Number},
+    DPMRewardFunction(weights::Array{<:Number}) = new(weights)
+    DPMRewardFunction(weights::Array{<:Number},
         π::Policy,
         πᵦ::Array{<:AbstractFloat,2},
         invT::Array{<:AbstractFloat,2},
         𝓛::Float64,
         ∇𝓛::Array{<:AbstractFloat,1}) = new(values, π, πᵦ, invT, 𝓛, ∇𝓛)
-    RewardFunction(values::Array{<:Number},
+    DPMRewardFunction(weights::Array{<:Number},
         π::Policy, πᵦ::Array{<:AbstractFloat,2},
         invT::Array{<:AbstractFloat,2}, 𝓛::Float64,
         ∇𝓛::Array{<:AbstractFloat,1}, v::Array{<:Number}) = new(values, π, πᵦ, invT, 𝓛, ∇𝓛, v)
 end
 
 
-function copy(r::RewardFunction)
-    RewardFunction(copy(r.weights), DiscreteValueIteration.Policy(r.π),
+function copy(r::DPMRewardFunction)
+    DPMRewardFunction(copy(r.weights), DiscreteValueIteration.Policy(r.π),
                     copy(r.πᵦ), copy(r.invT), copy(r.𝓛), copy(r.∇𝓛), copy(r.values))
 end
 
@@ -38,11 +45,11 @@ end
 """
     Sample a new reward value for every state from gaussian
 """
-function sample(::Type{RewardFunction}, features)
+function sample(_type::Type{<:RewardFunction}, features)
     # Choi states that he sets 80% of reward values to zero
-    values = rand(Normal(0,1), features)
+    weights = rand(Normal(0,1), features)
     # values = [ rand()<0.2?value:0.0 for value in values]
-    RewardFunction(values)
+    _type(weights)
 end
 
 """
