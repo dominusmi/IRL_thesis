@@ -105,13 +105,17 @@ function CRP(assignements::Vector{<:Integer}, κ)
 	probs_vector
 end
 
-### Initialise problem and generate trajectories
-srand(1)
-η, κ = 1.0, 1.0
-mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
-# trajectories = DPMBIRL.generate_trajectories(mdp, policy, 10)
-trajectories = DPMBIRL.generate_subgoals_trajectories(mdp)
-observations = traj2obs(mdp, trajectories)
+function calLoss(zᵗ, partitions, observations)
+	loss = 0
+	for (i,obs) in enumerate(observations)
+		p_idx = zᵗ[i]
+		p = partitions[p_idx]
+		if indmax(p.g.Q[obs.s,:]) !== obs.a
+			loss +=1
+		end
+	end
+	loss
+end
 
 fig = @gif for obs in observations
 	pos = DPMBIRL.i2s(mdp,obs.s)
@@ -119,6 +123,14 @@ fig = @gif for obs in observations
 	scatter([pos[1]], [pos[2]], xlim=(0,10), ylim=(0,10))
 end
 fig
+
+### Initialise problem and generate trajectories
+srand(1)
+η, κ = 1.0, 1.0
+mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
+# trajectories = DPMBIRL.generate_trajectories(mdp, policy, 10)
+trajectories = DPMBIRL.generate_subgoals_trajectories(mdp)
+observations = traj2obs(mdp, trajectories)
 
 
 ### Precompute all Q-values and their πᵦ
@@ -169,10 +181,17 @@ function _test()
 	set_goals = Set{Goal}(values(goals_dict))
 	current_goals = Set([G[1]])
 	### Main loop
-	for t in 1:10000
+	for t in 1:100
 		println("Iteration $t")
+
+		# Set up iteration variables
 		zᵗ = Z[t]
 		gᵗ = G[t]
+
+		# Calculate loss
+		loss = calLoss(zᵗ,partitions, observations)
+		@show loss
+
 		# Sample new subgoals
 		for p in partitions
 			gᵗ = p.g
@@ -243,7 +262,6 @@ function _test()
 
 		# Add/remove partitions
 		post_process!(partitions, observations, zᵗ, next_z, new_partitions, t)
-
 
 		next_g = map(x->x.g, partitions)
 		current_goals = Set(next_g)
