@@ -164,8 +164,11 @@ const goals_array = tmp_array
 support_space_prior = support_space / sum(support_space)
 goals_prior = DiscretePrior( support_space_prior, Multinomial(1, support_space_prior) )
 
+
+
+
 ### Sample initial subgoal
-function _test()
+function _test(;max_iter=10)
 	G = []
 	push!(G, sample(Goal, goals_prior, goals_dict))
 
@@ -178,10 +181,11 @@ function _test()
 	partitions = Array{Partition}(0)
 	push!(partitions, Partition(G[1], copy.(observations)))
 
+
 	set_goals = Set{Goal}(values(goals_dict))
 	current_goals = Set([G[1]])
 	### Main loop
-	for t in 1:100
+	for t in 1:max_iter
 		println("Iteration $t")
 
 		# Set up iteration variables
@@ -189,13 +193,16 @@ function _test()
 		gᵗ = G[t]
 
 		# Calculate loss
-		loss = calLoss(zᵗ,partitions, observations)
+		loss = calLoss(zᵗ, partitions, observations)
 		@show loss
 
-		# Sample new subgoals
-		for p in partitions
-			gᵗ = p.g
-			prob_vector = zeros(n_support_states)
+		# Update each subgoal
+		for g in gᵗ
+		# for p in partitions
+			# g = p.g
+			# For each subgoal, must compute the probability of the currently assigned
+			# observations be of another goal
+			probs_vector = zeros(n_support_states)
 			# Calculate likelihood for all possible subgoals
 			for (i,stateᵢ) in enumerate(goals_array)
 				gⱼ = goals_dict[stateᵢ]
@@ -203,17 +210,30 @@ function _test()
 				for oᵢ in p.O
 					llh += likelihood(oᵢ,gⱼ, η)
 				end
-				prob_vector[i] = llh * prior(gⱼ, goals_prior)
+				probs_vector[i] = llh #* prior(gⱼ, goals_prior)
 			end
 			# Sample from multinomial
-			s = rand( Multinomial(1, prob_vector / sum(prob_vector)) )
+			s = rand( Multinomial(1, probs_vector / sum(probs_vector)) )
 			s = findfirst(x->x==1,s)
 
-			# Set new goal
-			updated_goal = goals_dict[goals_array[s]]
-			p.g = updated_goal
+			# Acceptance Step
+			if goals_array[s] ≠ g.state
+				# Not likelihood since prior part of it
+				curr_llh = probs_vector[findfirst(goals_array .== g.state)]
+				prop_llh = probs_vector[s]
+				accept = true
+				# if prop_llh < curr_llh
+				# 	accept = rand() < prop_llh / curr_llh
+				# end
+				if accept
+					# Set new goal
+					updated_goal = goals_dict[goals_array[s]]
+					# p.g = updated_goal
+					g = updated_goal
+					# accepted_counter += 1
+				end
+			end
 		end
-
 		next_z = zeros(Int64,n_observations)
 
 		next_g = map(x->x.g, partitions)
@@ -224,23 +244,23 @@ function _test()
 		new_partitions = []
 		for (i,oᵢ) in enumerate(observations)
 			probs_vector = copy(CRP_vector)
-			for (j,p) in enumerate(partitions)
+			for (j,g) in enumerate(gᵗ)
 				# j: cluster of g
 				### Calculate p(zᵢ=j|z,O,Rⱼ)
 				# P(zᵢ|z₋ᵢ) = n_observations in zᵢ / n-1+η
 				# P(oᵢ|g_zᵢ) = likelihood of observation given assignement
-				probs_vector[j] *= likelihood(oᵢ, p.g, η)
+				probs_vector[j] *= likelihood(oᵢ, g, η)
 			end
 			# New subgoal
-			new_g = sample(Goal, goals_prior, goals_dict)
-			if new_g ∈ current_goals
+			prop_g = sample(Goal, goals_prior, goals_dict)
+			if prop_g ∈ current_goals
 				# If sampled subgoal already in use, find in which partition
 				# @show new_g.state
-				chosen = findfirst(x->x.g == new_g, partitions)
+				chosen = findfirst(gᵗ .== prop_g)
 				# @show chosen
 			else
-				# Otherwise, prepare for new partition
-				probs_vector[end] *= likelihood(oᵢ, new_g, η)
+				# Otherwise, prepare for proposed partition
+				probs_vector[end] *= likelihood(oᵢ, prop_g, η)
 
 				# Normalise to get probabilities
 				probs_vector /= sum(probs_vector)
@@ -250,9 +270,20 @@ function _test()
 
 				# Prepare for new partitions or set new assignement
 				if chosen == size(probs_vector,1)
-					push!(new_partitions, [i, new_g])
+					push!(new_partitions, [i, prop_g])
 				end
 			end
+
+			# Acceptance step
+			if chosen ≠ zᵗ[i]
+				curr_llh = probs_vector[zᵗ[i]]
+				prop_llh = probs_vector[chosen]
+				accept = true
+				if prop_llh < curr_llh
+					accept = rand() < prop_llh / curr_llh
+				end
+			end
+
 			# Set new assignement
 			if chosen == 0
 				@show "Chosen = 0 at observation $i"
@@ -352,3 +383,15 @@ function post_process!(partitions,  observations, old_z, new_z, new_partitions, 
 		println("Removed partition $(rm-(i-1))")
 	end
 end
+
+
+
+# Ground truth
+G = [goals_dict[62], goals_dict[68], goals_dict[8]]
+z = vcat(fill(1,7), fill(2,6), fill(3,7))
+partitions = []
+push!(partitions, Partition(G[1], observations[1:7]))
+push!(partitions, Partition(G[2], observations[8:13]))
+push!(partitions, Partition(G[3], observations[14:20]))
+
+calLoss(z, partitions, observations)

@@ -234,12 +234,14 @@ end
 
 function generate_path_trajectories(mdp, states)
     state_counter = 2
-    mdp.reward_states = [states[state_counter]]
+    mdp.reward_values[ state_index(mdp,states[state_counter])] = 1.0
+
     policy = solve_mdp(mdp)
     traj = sim(mdp, states[1], max_steps=1000) do s
         if s ∈ states && s != states[end] && s != states[1]
             state_counter += 1
-            mdp.reward_states = [states[state_counter]]
+            mdp.reward_values[ mdp.reward_values .> 0. ] = 0.
+            mdp.reward_values[ state_index(mdp,states[state_counter]) ] = 1.0
             policy = solve_mdp(mdp)
             # println("$s, $state_counter")
         end
@@ -255,9 +257,9 @@ end
 
 function generate_subgoals_trajectories(mdp)
 
+    # TODO: this should remove the positive reward but keep the negative
     tmp_mdp = copy(mdp)
     tmp_mdp.reward_values[ tmp_mdp.reward_values .> 0. ] = 0.
-    tmp_mdp.reward_values = [1.]
 
     states = [GridWorldState(1,1), GridWorldState(2,7), GridWorldState(8,7), GridWorldState(8,1)]
 
