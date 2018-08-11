@@ -31,8 +31,8 @@ function likelihood(oᵢ::Observation, g::Goal, η )
 	if g.state == oᵢ.state
 		return 0.
 	end
-	denom = sum(exp.( η * g.Q[oᵢ.state, :] ))
-	exp( η * g.Q[oᵢ.state, oᵢ.action] ) / denom
+	\beta = exp.( η * g.Q[oᵢ.state, :] )
+	exp( η * g.Q[oᵢ.state, oᵢ.action] )
 end
 
 """

@@ -78,7 +78,7 @@ state_action_lh(πᵦ, s,a) = πᵦ[s,a]
     burn_in:        number of iterations not to record (at the beginning)
 """
 function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth = nothing, verbose=true, update=:ML, burn_in=5,
-                    use_clusters=true, path_to_folder=nothing, seed=1, use_prior=true, parameters=nothing)
+                    use_clusters=true, path_to_folder=nothing, seed=1, use_prior=true, parameters=nothing, fixed_clusters=0)
 
     srand(seed)
     verbose ? println("Using $(update) update") : nothing
@@ -105,9 +105,13 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
     #### Initialisation ####
     # Initialise clusters
-    if use_clusters
+    if use_clusters && iszero(fixed_clusters)
         K = n_trajectories
         assignements    = collect(1:n_trajectories)
+    elseif use_clusters && !iszero(fixed_clusters)
+        K = fixed_clusters
+        assignements = ones(n_trajectories)
+        assignements = rand(1:fixed_clusters, n_trajectories)
     else
         K = 1
         assignements = fill(1,n_trajectories)
@@ -134,7 +138,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
     𝓛_traj = ones(n_trajectories)*1e-5
     c      = Clusters(K, assignements, N, 𝓛_traj, θs)
 
-    use_clusters ? update_clusters!(c, mdp, κ, glb) : nothing
+    use_clusters ? update_clusters!(c, mdp, κ, fixed_clusters, glb) : nothing
 
     # Prepares log variable
     _log = Dict(:assignements => [], :EVDs => [], :likelihoods => [], :rewards => [], :clusters=>[], :acceptance_probability=>[], :acc_prob=>[])
@@ -153,7 +157,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
         tic()
         if use_clusters
             updated_clusters_id = Set()
-            updated_clusters_id = update_clusters!(c, mdp, κ, glb)
+            updated_clusters_id = update_clusters!(c, mdp, κ, fixed_clusters, glb)
             verbose ? println("Clusters changed: $(length(updated_clusters_id)) of $(c.K)") : nothing
         end
         cluster_time = toq()
@@ -271,11 +275,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 # push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
                 push!(_log[:rewards], copy.(c.rewards))
                 use_clusters ? push!(_log[:clusters], copy(c)) : nothing
-
-                # if ground_truth !== nothing
-                    # log_evd!(_log[:EVDs], mdp, c.rewards, ground_truth)
-                    # verbose ? show(_log[:EVDs][end]) : nothing
-                # end
             else
                 f = jldopen(path_to_file, "r+")
                 write(f, "rewards_$(t-burn_in)", r2weights.(c.rewards))
@@ -289,13 +288,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
             # push!(_log[:rewards], copy.(c.rewards))
             println("Finished burn in")
             ### Burn in covariance calculation ###
-            # rewards = zeros(burn_in, n_features)
-            # for i in 1:burn_in
-                # rewards[i,:] = _log[:rewards][i][1].values
-            # end
-            # σ = σ .* [sqrt(cov(rewards[rewards[:,1].!==0.0,i])) for i in 1:n_features]
-            # _log[:rewards] = []
-            # @show σ
+            # rewards_covariance!(σ, _log)
             # println("Found new covariance, sample: $(σ[1:3,1:3])")
         end
 
@@ -314,7 +307,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
     _log[:changed] = changed_log
 
 
-    if path_to_file !== nothing
+    if path_to_folder !== nothing
         f = jldopen(path_to_file, "r+")
         write(f, "acceptance_probabilities", _log[:acc_prob])
         close(f)
@@ -322,8 +315,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
     c, _log
 end
-
-
 
 # End module
 end

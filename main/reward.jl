@@ -90,3 +90,14 @@ end
 function values(r::RewardFunction, ϕ)
     ϕ*r.weights
 end
+
+function rewards_covariance!(σ, _log)
+    n_steps = size(_log[:rewards],1)
+    n_features = size(_log[:rewards][1],1)
+    rewards = zeros(n_steps, n_features)
+    for i in 1:n_steps
+        rewards[i,:] = _log[:rewards][i][1].values
+    end
+    σ = σ .* [sqrt(cov(rewards[rewards[:,1].!==0.0,i])) for i in 1:n_features]
+    σ
+end

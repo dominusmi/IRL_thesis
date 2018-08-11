@@ -35,8 +35,12 @@ abstract type Likelihood end
     Dir(``\\frac{N\\i}{\\alpha-1+\\sum_i N\\i}, \frac{\\alpha}{alpha-1+\\sum_i N_i}``)
     and then multinomial over the resulting probabilities
 """
-function sample(c::Clusters, m::Integer, α::AbstractFloat)
-    αs = zeros(c.K+1)
+function sample(c::Clusters, m::Integer, α::AbstractFloat, fixed_clusters::Integer)
+    if iszero(fixed_clusters)
+        αs = zeros(c.K+1)
+    else
+        αs = zeros(c.K)
+    end
     ∑N = size(c.assignements,1)
     cₘ = c.assignements[m]
     for k in 1:c.K
@@ -47,7 +51,9 @@ function sample(c::Clusters, m::Integer, α::AbstractFloat)
         end
         αs[k] = Nₖ / (α-1+∑N)
     end
-    αs[end] = α / (α-1+∑N)
+    if iszero(fixed_clusters)
+        αs[end] = α / (α-1+∑N)
+    end
     indmax(rand(Dirichlet(αs),1))
 end
 
@@ -89,7 +95,7 @@ end
     κ:      concentration for DPM
     η:      "confidence" of trajectories (Boltzmann temperature)
 """
-function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Globals)
+function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, fixed_clusters::Integer, glb::Globals)
     # Permute trajectory and clusters to avoid any bias
     trajectoryₚ = randperm(size(glb.χ,1))
 
@@ -104,7 +110,7 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
 
         new_cluster = false
         cₘ   = clusters.assignements[m] # Current assignement
-        cₘ⁻  = sample(clusters,m,κ)     # Potential new assignement
+        cₘ⁻  = sample(clusters,m,κ,fixed_clusters)     # Potential new assignement
 
         if cₘ⁻ == cₘ
             continue
@@ -120,7 +126,6 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
 
         # Calculate likelihood
         # TODO: record old likelihood so don't have to recalculate
-        # This trajectory likelihood is LOGGED correctly ✓
         𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].πᵦ, glb)
         𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻, glb)
         accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)

@@ -46,7 +46,7 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 								ground_truth = ground_truth, verbose = true, update = :langevin_rand,
 								burn_in=burn_in, use_clusters=use_clusters, seed=seed, path_to_folder="$(pwd())/results", parameters=parameters)
 	parameters["seed"] = seed
-	_log
+	_log[:ground_truth] = ground_truth
 end
 
 # Changing number trajectories per agent: [10, 20, 40, 80]

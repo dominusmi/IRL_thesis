@@ -56,27 +56,27 @@ function generate_gridworld(size_x::Integer, size_y::Integer;
     mdp, solve_mdp(mdp)
 end
 
-# function generate_diaggridworld(size_x::Integer, size_y::Integer;
-#                             γ=0.9, boundary_penalty=-1.0, transitionₚ=1.0)
-#
-#     states, terminals = generate_reward_states(size_x, size_y)
-#
-#     all_states = reshape([GridWorldState(x,y) for x in 1:size_x, y in 1:size_y], size_x*size_y)
-#     rewards = reshape([states[y,x] for x in 1:size_x, y in 1:size_y], size_x*size_y)
-#
-#     mdp = DiagGridWorld(size_x,                                                                 # size x
-#                     size_y,                                                                 # size y
-#                     # map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
-#                     # map(x->x[3], reward_states),                                            # Respective rewards
-#                     all_states,
-#                     rewards,
-#                     boundary_penalty,                                                       # Boundary penalty
-#                     transitionₚ,                                                            # Transition probability
-#                     Set([GridWorldState(x[1:2]...) for x in terminals]),      # Terminal states
-#                     γ                                                                       # Discount factor γ
-#                 )
-#     mdp, solve_mdp(mdp)
-# end
+function generate_diaggridworld(size_x::Integer, size_y::Integer;
+                            γ=0.9, boundary_penalty=-1.0, transitionₚ=1.0)
+
+    states, terminals = generate_reward_states(size_x, size_y)
+
+    all_states = reshape([GridWorldState(x,y) for x in 1:size_x, y in 1:size_y], size_x*size_y)
+    rewards = reshape([states[y,x] for x in 1:size_x, y in 1:size_y], size_x*size_y)
+
+    mdp = DiagGridWorld(size_x,                                                                 # size x
+                    size_y,                                                                 # size y
+                    # map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
+                    # map(x->x[3], reward_states),                                            # Respective rewards
+                    all_states,
+                    rewards,
+                    boundary_penalty,                                                       # Boundary penalty
+                    transitionₚ,                                                            # Transition probability
+                    Set([GridWorldState(x[1:2]...) for x in terminals]),      # Terminal states
+                    γ                                                                       # Discount factor γ
+                )
+    mdp, solve_mdp(mdp)
+end
 
 function copy(mdp::GridWorld)
     new_mdp = GridWorld(mdp.size_x,
@@ -88,16 +88,17 @@ function copy(mdp::GridWorld)
                         copy(mdp.terminals),
                         mdp.discount_factor)
 end
-# function copy(mdp::DiagGridWorld)
-#     new_mdp = DiagGridWorld(mdp.size_x,
-#                         mdp.size_y,
-#                         copy(mdp.reward_states),
-#                         copy(mdp.reward_values),
-#                         mdp.bounds_penalty,
-#                         mdp.tprob,
-#                         copy(mdp.terminals),
-#                         mdp.discount_factor)
-# end
+
+function copy(mdp::DiagGridWorld)
+    new_mdp = DiagGridWorld(mdp.size_x,
+                        mdp.size_y,
+                        copy(mdp.reward_states),
+                        copy(mdp.reward_values),
+                        mdp.bounds_penalty,
+                        mdp.tprob,
+                        copy(mdp.terminals),
+                        mdp.discount_factor)
+end
 
 """
     Generate trajectories given an mdp and policy

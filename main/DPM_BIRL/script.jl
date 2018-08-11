@@ -11,12 +11,12 @@ using POMDPToolbox
 # 	end
 # end
 
-problem_seed = 1
+problem_seed = 2
 srand(problem_seed)
 
-n_agents = 2
+n_agents = 1
 traj_per_agent = 20
-iterations = 500
+iterations = 50
 confidence = 1.0
 burn_in = 1
 ϕ = eye(100)
@@ -31,7 +31,7 @@ for i in 1:n_agents
 	push!(policies, policy)
 end
 
-use_clusters = true
+use_clusters = false
 concentration = 1.0
 
 raw_mdp = copy(mdps[1])
@@ -51,7 +51,7 @@ parameters = Dict("Number of agents"=>n_agents, "Number of trajectories per agen
 # folder = prepare_log_folder(pwd()*"/results", parameters)
 
 logs = []
-for seed in 7:7
+for seed in 6:6
 	# prepare_log_file(folder, seed)
 	τ = DPMBIRL.LoggedFloat(.8)
 	c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; τ=τ, β=confidence, κ=concentration,
@@ -113,16 +113,22 @@ mean(n_clusters_posterior)
 
 summary = summary_statistics(_log, parameters)
 
-extr_reward = summary[:rewards_posterior][3][:summaries][3][:reward_means]
-extr_reward = summary[:rewards_posterior][1][:figs][1]
+extr_reward = summary[:rewards_posterior][2][:summaries][1][:reward_means]
+extr_reward = summary[:rewards_posterior][2][:figs][2]
 
 
 heatmap(reshape(mdps[2].reward_values,(10,10)))
 heatmap(reshape(extr_reward,(10,10)))
 
+fig_mdp1 = heatmap(reshape(mdps[1].reward_values,(10,10)), legend=false)
+fig_r1 = heatmap(reshape(extr_reward,(10,10)), legend=false)
+
+Plots.plot(fig_mdp1, fig_mdp2, fig_r1, fig_r2, layout=(2,2))
+
+savefig("MDPs and inferred rewards")
 
 summary, fig = rewards_summary_statistics(_log[:rewards], parameters)
 fig[1]
 summary
 
-summary[:rewards_posterior][2][:fig]
+extr_reward = summary[1][:reward_means]

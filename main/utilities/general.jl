@@ -107,11 +107,11 @@ function update_τ(τ, t, changed_log)
     t>=20 ? println("Last update: $(τ.last_modified), current rate: $(sum(changed_log[t-19:t])/20)") : nothing
     if t >= 20 && t-τ.last_modified >= 5
         acc_rate = sum(changed_log[t-19:t])/20
-        if acc_rate < 0.4
+        if acc_rate < 0.3
             change = -τ/10
         # elseif acc_rate < 0.5
             # τ *= 0.9
-        elseif acc_rate > 0.7
+        elseif acc_rate > 0.8
             # change = (1-τ)/10
             change = τ/10
         # elseif acc_rate > 0.7
