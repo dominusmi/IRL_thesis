@@ -110,7 +110,7 @@ srand(1)
 η, κ = 1.0, 1.0
 mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
 # trajectories = DPMBIRL.generate_trajectories(mdp, policy, 10)
-trajectories = DPMBIRL.generate_subgoals_trajectories(mdp)
+trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(5,5), [GridWorldState(5,7), GridWorldState(5,3)])
 observations = traj2obs(mdp, trajectories)
 
 
@@ -154,17 +154,17 @@ support_space_prior = support_space / sum(support_space)
 goals_prior = DiscretePrior( support_space_prior, Multinomial(1, support_space_prior) )
 
 # Initial assignement
-z = vcat(fill(1,7), fill(2,6), fill(3,9))
+# z = vcat(fill(1,7), fill(2,15))
 srand(1)
 curr_goals = [sample(Goal, goals_prior) for i in 1:3]
 
-max_iter = 100
+max_iter = 1000
 _logs = zeros(Integer, 10,10)
 for t in 1:max_iter
 	curr_goals = gibbs_sampling(curr_goals, z)
 	dbg = map(x->DPMBIRL.i2s(mdp, x), curr_goals)
 	# @show dbg[1]
-	for pos in [dbg[3]]
+	for pos in [dbg[1]]
 		_logs[11-pos[2], pos[1]] += 1
 	end
 end

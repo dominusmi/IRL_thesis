@@ -1,4 +1,5 @@
 include("DPM_BIRL.jl")
+using DPMBIRL
 include("../result_explorer.jl")
 using POMDPModels
 using POMDPToolbox
@@ -13,11 +14,11 @@ using POMDPToolbox
 problem_seed = 1
 srand(problem_seed)
 
-n_agents = 1
+n_agents = 2
 traj_per_agent = 20
-iterations = 300
+iterations = 500
 confidence = 1.0
-burn_in = 50
+burn_in = 1
 ϕ = eye(100)
 χ = Array{MDPHistory}(0)
 mdps = []
@@ -30,7 +31,7 @@ for i in 1:n_agents
 	push!(policies, policy)
 end
 
-use_clusters = false
+use_clusters = true
 concentration = 1.0
 
 raw_mdp = copy(mdps[1])
@@ -50,7 +51,7 @@ parameters = Dict("Number of agents"=>n_agents, "Number of trajectories per agen
 # folder = prepare_log_folder(pwd()*"/results", parameters)
 
 logs = []
-for seed in 1:1
+for seed in 7:7
 	# prepare_log_file(folder, seed)
 	τ = DPMBIRL.LoggedFloat(.8)
 	c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; τ=τ, β=confidence, κ=concentration,
@@ -61,11 +62,15 @@ for seed in 1:1
 	push!(logs, _log)
 end
 
-summary, fig = summary_statistics(logs[1][:rewards], parameters)
-fig
+# save("$(pwd())/log_500_2_30.jld","parameters",parameters, "logs", logs)
+
+summary, fig = rewards_summary_statistics(logs[1][:rewards][burn_in:end], parameters)
+fig[1]
 real = heatmap(reshape(mdps[1].reward_values, (10,10)))
 heatmap(reshape(mdps[2].reward_values, (10,10)))
-found = heatmap(reshape(summary[:reward_means], (10,10)))
+found = heatmap(reshape(summary[1][:reward_means], (10,10)))
+
+
 
 fig = Plots.plot(real, found, layout=(1,2), size=(1600,600), dpi=300, title="")
 savefig(fig, "Real vs Mean reward")
@@ -96,3 +101,28 @@ clusters_hist = log[:clusters]
 curr_cluster = clusters_hist[190]
 curr_reward = curr_cluster.rewards[1]
 @enter DPMBIRL.proposal_distribution(curr_reward, DPMBIRL.sample(DPMBIRL.RewardFunction,100), curr_reward.∇𝓛, 0.1)
+
+
+
+
+n_clusters_posterior = map(x->x.K, _log[:clusters])
+
+Plots.plot(n_clusters_posterior)
+
+mean(n_clusters_posterior)
+
+summary = summary_statistics(_log, parameters)
+
+extr_reward = summary[:rewards_posterior][3][:summaries][3][:reward_means]
+extr_reward = summary[:rewards_posterior][1][:figs][1]
+
+
+heatmap(reshape(mdps[2].reward_values,(10,10)))
+heatmap(reshape(extr_reward,(10,10)))
+
+
+summary, fig = rewards_summary_statistics(_log[:rewards], parameters)
+fig[1]
+summary
+
+summary[:rewards_posterior][2][:fig]

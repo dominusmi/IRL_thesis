@@ -1,13 +1,6 @@
 import Base.+, Base.-, Base.copy
 
-"""
-    A reward function is a type for which two things must be defined:
-        weights (feature space) and values (real space)
-"""
-abstract type RewardFunction end
-
-
-mutable struct DPMRewardFunction <: RewardFunction
+mutable struct RewardFunction
     weights::Array{<:Number}
     π::Policy
     πᵦ::Array{<:AbstractFloat,2}
@@ -15,22 +8,22 @@ mutable struct DPMRewardFunction <: RewardFunction
     𝓛::Float64
     ∇𝓛::Array{<:AbstractFloat,1}
     values::Array{<:Number}
-    DPMRewardFunction(weights::Array{<:Number}) = new(weights)
-    DPMRewardFunction(weights::Array{<:Number},
+    RewardFunction(weights::Array{<:Number}) = new(weights)
+    RewardFunction(weights::Array{<:Number},
         π::Policy,
         πᵦ::Array{<:AbstractFloat,2},
         invT::Array{<:AbstractFloat,2},
         𝓛::Float64,
-        ∇𝓛::Array{<:AbstractFloat,1}) = new(values, π, πᵦ, invT, 𝓛, ∇𝓛)
-    DPMRewardFunction(weights::Array{<:Number},
+        ∇𝓛::Array{<:AbstractFloat,1}) = new(weights, π, πᵦ, invT, 𝓛, ∇𝓛)
+    RewardFunction(weights::Array{<:Number},
         π::Policy, πᵦ::Array{<:AbstractFloat,2},
         invT::Array{<:AbstractFloat,2}, 𝓛::Float64,
-        ∇𝓛::Array{<:AbstractFloat,1}, v::Array{<:Number}) = new(values, π, πᵦ, invT, 𝓛, ∇𝓛, v)
+        ∇𝓛::Array{<:AbstractFloat,1}, v::Vector{<:Number}) = new(weights, π, πᵦ, invT, 𝓛, ∇𝓛, v)
 end
 
 
-function copy(r::DPMRewardFunction)
-    DPMRewardFunction(copy(r.weights), DiscreteValueIteration.Policy(r.π),
+function copy(r::RewardFunction)
+    RewardFunction(copy(r.weights), DiscreteValueIteration.Policy(r.π),
                     copy(r.πᵦ), copy(r.invT), copy(r.𝓛), copy(r.∇𝓛), copy(r.values))
 end
 
@@ -42,14 +35,18 @@ function -(r::RewardFunction, values::Array{<:AbstractFloat})
     RewardFunction(r.weights-values)
 end
 
+""" Get weights """
+r2weights(r::RewardFunction) = r.weights
+
+
 """
     Sample a new reward value for every state from gaussian
 """
-function sample(_type::Type{<:RewardFunction}, features)
+function sample(::Type{RewardFunction}, features)
     # Choi states that he sets 80% of reward values to zero
     weights = rand(Normal(0,1), features)
     # values = [ rand()<0.2?value:0.0 for value in values]
-    _type(weights)
+    RewardFunction(weights)
 end
 
 """

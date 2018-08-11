@@ -4,14 +4,18 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 @everywhere using JLD
 
 
-@everywhere function gather_results(n_agents, traj_per_agent, confidence, iterations)
-	srand(n_agents*traj_per_agent^2)
+@everywhere function gather_results(seed, n_agents, traj_per_agent, iterations)
+
+	problem_seed = 1
+	srand(problem_seed)
+
+	iterations = iterations
+	confidence = 1.0
+	burn_in = 200
+	ϕ = eye(100)
 	χ = Array{MDPHistory}(0)
 	mdps = []
 	policies = []
-	ϕ = eye(100)
-	learning_rate = 0.1
-
 	for i in 1:n_agents
 		mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
 		χₐ = DPMBIRL.generate_trajectories(mdp, policy, traj_per_agent)
@@ -20,47 +24,54 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 		push!(policies, policy)
 	end
 
-	c, EVD, log = DPMBIRL.DPM_BIRL(mdps[1], ϕ, χ, iterations; α=learning_rate, β=confidence, κ=0.1, ground_policy = policies[1], verbose = true, update = :ML)
+	use_clusters = true
+	concentration = 1.0
 
-	EVD_matrix = zeros( size(c.rewards,1), size(policies,1) )
-	for (i,r) in enumerate(c.rewards)
-		# Need to change this to account for features
-		for (j, policy) in enumerate(policies)
-			v = DPMBIRL.policy_evaluation(mdps[j], policy)
-			πᵣ = DPMBIRL.solve_mdp(mdps[j], r)
-			vᵣ = DPMBIRL.policy_evaluation(mdps[j], πᵣ)
-			println("Final EVD for reward $i and policy $j: $(EVD[end])")
-			EVD_matrix[i,j] = norm(v-vᵣ)
-		end
-	end
+	raw_mdp = copy(mdps[1])
+	raw_mdp.reward_values = Array{Float64}(0)
 
-	log, EVD_matrix
+	ground_truth = Dict(:policy=>policies, :rewards=>map(x->x.reward_values, mdps), :vs=>vs)
+
+	parameters = Dict("Number of agents"=>n_agents, "Number of trajectories per agent"=>traj_per_agent,
+												"Confidence"=>confidence, "Concentration"=>concentration,
+												"Problem specs"=>"10x10, features = states", "Update"=>"Langevin",
+												"Burn in"=>burn_in, "Use clusters"=>use_clusters, "Problem seed"=>problem_seed)
+
+	# folder = prepare_log_folder(pwd()*"/results", parameters)
+
+	logs = []
+	# prepare_log_file(folder, seed)
+	τ = DPMBIRL.LoggedFloat(.8)
+	c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; τ=τ, β=confidence, κ=concentration,
+								ground_truth = ground_truth, verbose = true, update = :langevin_rand,
+								burn_in=burn_in, use_clusters=use_clusters, seed=seed, path_to_folder="$(pwd())/results", parameters=parameters)
+	parameters["seed"] = seed
+	_log
 end
 
 # Changing number trajectories per agent: [10, 20, 40, 80]
 # Changing number of agents: [1,2,4,6,8]
 # changing confidence: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
-
-iterations = 5
-for n_agents in [1]
-	for traj_per_agent in [10]
-		confidences = [.5, .6, .7, .8, .9, 1.0]
+seeds = [1,2,3,4,5]
+iterations = 2000
+for n_agents in [2,3,4]
+	for traj_per_agent in [10,20,40]
 		futures = Dict()
 		# Launch all processes
-		for (index, confidence) in enumerate(confidences)
-			futures[confidence] = @spawn gather_results(n_agents, traj_per_agent, confidence, iterations)
+		for (index, seed) in enumerate(seed)
+			futures[seed] = @spawn gather_results(seed, n_agents, traj_per_agent, iterations)
 		end
 		# wait for processes
 		for key in keys(futures)
 			futures[key] = fetch(futures[key])
 		end
-		futures["seed"] = n_agents*traj_per_agent^2
-		println("File saved at: $(pwd())/results/$(n_agents)_$(traj_per_agent).jld")
-		save("$(pwd())/results/$(n_agents)_$(traj_per_agent).jld", "results", futures)
-		println("Saved results for $(n_agents) agents and $(traj_per_agent) trajectories per agent")
+		for seed in seeds
+			println("File saved at: $(pwd())/results/$(seed)_$(n_agents)_$(traj_per_agent).jld")
+			save("$(pwd())/results/$(seed)_$(n_agents)_$(traj_per_agent).jld", "results", futures[seed])
+			println("Saved results for $(n_agents) agents and $(traj_per_agent) trajectories per agent")
+		end
 	end
 end
-
 
 
 @everywhere g(x) = x^2

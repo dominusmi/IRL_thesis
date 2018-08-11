@@ -127,7 +127,7 @@ fig
 ### Initialise problem and generate trajectories
 srand(1)
 η, κ = 1.0, 1.0
-mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
+mdp, policy = DPMBIRL.generate_diaggridworld(10,10,γ=0.9)
 # trajectories = DPMBIRL.generate_trajectories(mdp, policy, 10)
 trajectories = DPMBIRL.generate_subgoals_trajectories(mdp)
 observations = traj2obs(mdp, trajectories)

@@ -27,7 +27,7 @@ function generate_reward_states(x,y)
     states, terminals
 end
 
-function solve_mdp(mdp::GridWorld)
+function solve_mdp(mdp::MDP)
     solver = ValueIterationSolver(max_iterations=100, belres=1e-3)
     policy = ValueIterationPolicy(mdp)
     policy = solve(solver, mdp, policy)
@@ -56,18 +56,23 @@ function generate_gridworld(size_x::Integer, size_y::Integer;
     mdp, solve_mdp(mdp)
 end
 
-# function generate_gridworld(size_x::Integer, size_y::Integer;
+# function generate_diaggridworld(size_x::Integer, size_y::Integer;
 #                             γ=0.9, boundary_penalty=-1.0, transitionₚ=1.0)
 #
-#     reward_states = generate_reward_states(size_x, size_y)
+#     states, terminals = generate_reward_states(size_x, size_y)
 #
-#     mdp = GridWorld(size_x,                                                                 # size x
+#     all_states = reshape([GridWorldState(x,y) for x in 1:size_x, y in 1:size_y], size_x*size_y)
+#     rewards = reshape([states[y,x] for x in 1:size_x, y in 1:size_y], size_x*size_y)
+#
+#     mdp = DiagGridWorld(size_x,                                                                 # size x
 #                     size_y,                                                                 # size y
-#                     map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
-#                     map(x->x[3], reward_states),                                            # Respective rewards
+#                     # map(x->GridWorldState(x[1:2]...), reward_states),                       # Reward states
+#                     # map(x->x[3], reward_states),                                            # Respective rewards
+#                     all_states,
+#                     rewards,
 #                     boundary_penalty,                                                       # Boundary penalty
 #                     transitionₚ,                                                            # Transition probability
-#                     Set([GridWorldState(x[1:2]...) for x in reward_states if x[3]>0]),      # Terminal states
+#                     Set([GridWorldState(x[1:2]...) for x in terminals]),      # Terminal states
 #                     γ                                                                       # Discount factor γ
 #                 )
 #     mdp, solve_mdp(mdp)
@@ -83,6 +88,16 @@ function copy(mdp::GridWorld)
                         copy(mdp.terminals),
                         mdp.discount_factor)
 end
+# function copy(mdp::DiagGridWorld)
+#     new_mdp = DiagGridWorld(mdp.size_x,
+#                         mdp.size_y,
+#                         copy(mdp.reward_states),
+#                         copy(mdp.reward_values),
+#                         mdp.bounds_penalty,
+#                         mdp.tprob,
+#                         copy(mdp.terminals),
+#                         mdp.discount_factor)
+# end
 
 """
     Generate trajectories given an mdp and policy
@@ -232,16 +247,17 @@ function log_likelihood(mdp::GridWorld, Q::Array{<:AbstractFloat,2}, trajectorie
     llh
 end
 
-function generate_path_trajectories(mdp, states)
-    state_counter = 2
-    mdp.reward_values[ state_index(mdp,states[state_counter])] = 1.0
-
+function generate_path_trajectories(mdp, initial_state, sub_reward_states)
+    reward_state_counter = 1
+    mdp.reward_values[ state_index(mdp,sub_reward_states[reward_state_counter]) ] = 1.0
+    assigned_to = []
     policy = solve_mdp(mdp)
-    traj = sim(mdp, states[1], max_steps=1000) do s
-        if s ∈ states && s != states[end] && s != states[1]
-            state_counter += 1
-            mdp.reward_values[ mdp.reward_values .> 0. ] = 0.
-            mdp.reward_values[ state_index(mdp,states[state_counter]) ] = 1.0
+    traj = sim(mdp, initial_state, max_steps=1000) do s
+        if s ∈ sub_reward_states && s != sub_reward_states[end]
+            reward_state_counter += 1
+            mdp.reward_values[ mdp.reward_values .> 0. ] = -.1
+            @show reward_state_counter
+            mdp.reward_values[ state_index(mdp, sub_reward_states[reward_state_counter]) ] = 1.0
             policy = solve_mdp(mdp)
             # println("$s, $state_counter")
         end
@@ -249,22 +265,22 @@ function generate_path_trajectories(mdp, states)
 
         a_index = POMDPModels.a2int(a, mdp)+1
         s_index = state_index(mdp, s)
-
+        push!(assigned_to, reward_state_counter)
         return a
     end
+    traj, assigned_to
 end
 
 
-function generate_subgoals_trajectories(mdp)
+function generate_subgoals_trajectories(mdp, initial_state, sub_reward_states)
 
     # TODO: this should remove the positive reward but keep the negative
     tmp_mdp = copy(mdp)
     tmp_mdp.reward_values[ tmp_mdp.reward_values .> 0. ] = 0.
+    tmp_mdp.reward_values -= 0.1
 
-    states = [GridWorldState(1,1), GridWorldState(2,7), GridWorldState(8,7), GridWorldState(8,1)]
-
-    tmp_mdp.terminals =  Set([states[end]])
-    generate_path_trajectories(tmp_mdp, states)
+    tmp_mdp.terminals =  Set([sub_reward_states[end]])
+    generate_path_trajectories(tmp_mdp, initial_state, sub_reward_states)
 end
 
 

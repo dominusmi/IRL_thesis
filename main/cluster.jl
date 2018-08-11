@@ -27,6 +27,7 @@ end
 abstract type Likelihood end
 
 
+
 """
    Samples a potential new clustering in the range [1, 2, ..., K+1].
 
@@ -110,6 +111,7 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, glb::Global
         elseif cₘ⁻ == clusters.K+1
             # If new cluster, sample new reward
             r⁻ = sample(RewardFunction, glb.n_features)
+            r⁻.values = values(r⁻, glb.ϕ)
             new_cluster = true
         else
             # Otherwise "load" current reward function

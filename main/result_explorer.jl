@@ -1,34 +1,6 @@
 using JLD
 using Plots
 
-# results_folder = "/home/edoardo/Documents/Masters Work/Dissertation/results/DPM_BIRL"
-# results_folder = "/run/user/1000/gvfs/sftp:host=godzilla.csc.warwick.ac.uk,user=phujsc/home/space/phujsc/Documents/main/results"
-#
-# results = load("$results_folder/2_40.jld")
-# results = results["results"]
-#
-# lhs = get_lhs(results, 1.0)
-#
-# evds = get_EVD_matrix(results, 1.0)
-# lhs  = _log[:likelihoods]
-# evds_1 = zeros(350, 4)
-# evds_2 = zeros(350, 4)
-#
-# lh_1 = zeros(350, 4)
-#
-# for (i,evd) in enumerate(get_EVD_matrix(results, 1.0))
-# 	for j in 1:4
-# 		if j <= size(evd,2)
-# 			evds_1[i,j] = evd[1,j]
-# 			evds_2[i,j] = evd[2,j]
-# 			lh_1[i,j] = lhs[i][j]
-# 		end
-# 	end
-# end
-#
-# fig = Plots.plot(evds_1[:,1])
-# Plots.plot!(lh_1[:,1]/maximum(lh_1[:,1])*20)
-# savefig(fig, "MCMC 400 iterations")
 
 #### Acceptance Probability ####
 function plot_att_prob(_log)
@@ -64,9 +36,9 @@ end
 
 #### Rewards ####
 function log2reward(reward_log)
-	rewards = zeros(size(reward_log,1), size(reward_log[1][1].values,1))
+	rewards = zeros(size(reward_log,1)-1, size(reward_log[1].values,1))
 	for i in 1:size(reward_log,1)-1
-		rewards[i,:] = reward_log[i][1].values
+		rewards[i,:] = reward_log[i].values
 	end
 	rewards
 end
@@ -101,7 +73,7 @@ end
 
 
 """
-	Given an array of logs, makes a summary table of
+	Given an array of rewards, makes a summary table of
 	- seed, initial τ, burn-in, number of agents, number of trajectories
 	- reward mean
 	- reward variance
@@ -110,13 +82,30 @@ end
 	= acceptance
 	= likelihood
 """
-function summary_statistics(rewards, parameters; save_to=nothing)
+function rewards_summary_statistics(rewards, parameters; save_to=nothing)
 
-	burn_in = parameters["Burn in"]
-	reward = log2reward(rewards[burn_in:end])
-	reward_mean = mean(reward,1)'
-	reward_median = median(reward,1)'
-	reward_variance = var(reward,1)'
+	n_rewards = size(rewards[1],1)
+	summaries = []
+	figures = []
+	for n in 1:n_rewards
+		# Isolates the n^th reward
+		reward = map(r->r[n], rewards)
+		# Get statistics
+		summary, figure = summary_statistics(reward)
+		push!(summaries, summary)
+		push!(figures, figure)
+	end
+	summaries, figures
+end
+
+
+function summary_statistics(rewards::Vector{DPMBIRL.RewardFunction})
+	# Transforms array of rewards into matrix
+	rewards_matrix = log2reward(rewards)
+	# Summary statistcs
+	reward_mean = mean(rewards_matrix,1)'
+	reward_median = median(rewards_matrix,1)'
+	reward_variance = var(rewards_matrix,1)'
 
 	# acc_rate_mean = mean(_log[:acc_prob][burn_in:end])
 
@@ -125,16 +114,39 @@ function summary_statistics(rewards, parameters; save_to=nothing)
 					:reward_variance => reward_variance,
 					# :acc_rate_mean => acc_rate_mean
 					)
-	seed = (parameters["seed"])
-	if save_to !== nothing
-		f = jldopen("$save_to/summary-$seed.jld", "r+")
-		write(f, "summary", summary)
-		close(f)
-	end
-	seed = parameters["seed"]
-	path_to_save = save_to
-	summary, plot_reward(rewards, path_to_save = path_to_save )
+	# seed = (parameters["seed"])
+	# if save_to !== nothing
+	# 	f = jldopen("$save_to/summary-$seed.jld", "r+")
+	# 	write(f, "summary", summary)
+	# 	close(f)
+	# end
+	# seed = parameters["seed"]
+	# path_to_save = save_to
+	summary, plot_reward(rewards)
 end
+
+"""
+	Does complete summary statistics
+"""
+function summary_statistics(_log, parameters)
+	burn_in = parameters["Burn in"]
+	n_clusters_hist = map(x->x.K, _log[:clusters])
+	# rewards_log = _log[:rewards][burn_in:end]
+	fig_clusters = Plots.plot(n_clusters_hist)
+	c_mean = mean(n_clusters_posterior)
+	c_std = std(n_clusters_posterior)
+
+	# Prepare statistic for each possible cluster number
+	summary = Dict(:clusters_posterior => Dict(:mean=>c_mean, :std=>c_std, :fig=>fig_clusters), :rewards_posterior=>Dict())
+	for k in unique(n_clusters_posterior)
+		indeces = find(n_clusters_posterior .== k)
+		r_summaries, r_figs = rewards_summary_statistics(_log[:rewards][indeces], parameters)
+		summary[:rewards_posterior][k] = Dict(:summaries=>r_summaries, :figs=>r_figs)
+	end
+	summary
+end
+
+### TODO: log2reward implicitely only takes the first reward function given an array. Fix it
 
 function prepare_log_folder(save_to, parameters)
 	minute, hour = Dates.minute(now()), Dates.hour(now())
@@ -148,10 +160,7 @@ function prepare_log_folder(save_to, parameters)
 	"$save_to/"
 end
 
-function prepare_log_file(save_to, seed)
-	f = jldopen("$save_to/summary-$seed.jld", "w")
-	close(f)
-end
+
 
 """
 	Plots the reward function using different seed
