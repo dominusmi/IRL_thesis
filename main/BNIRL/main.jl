@@ -10,11 +10,16 @@ include("helper.jl")
 
 
 ### Initialise problem and generate trajectories
-srand(1)
+srand(5)
 η, κ = 1.0, 1.0
-mdp, policy = DPMBIRL.generate_diaggridworld(10,10,γ=0.999)
+mdp, policy = DPMBIRL.generate_diaggridworld(10,10,γ=0.90)
+# mdp.reward_states = mdp.reward_states[mdp.reward_values .> 0.]
+mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
+
 trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(6,2), GridWorldState(1,5)])
 observations = traj2obs(mdp, trajectories)
+
+# heatmap(reshape(mdp.reward_values,(10,10)))
 
 # Setup general variables
 n_states = size(states(mdp),1)-1
@@ -24,7 +29,7 @@ support_space = getSupportSpace(observations)
 n_support_states = size(support_space,1)
 
 ### Precompute all Q-values and their πᵦ
-tmp_dict, tmp_array = precomputeQ(mdp, support_space)
+tmp_dict, tmp_array, utils = precomputeQ(mdp, support_space)
 
 const state2goal = tmp_dict
 const all_goals = tmp_array
@@ -61,4 +66,21 @@ for t in 1:max_iter
 end
 logs[:,4] = _log
 
-Plots.plot(mean(logs,2))
+likelihood(observations[2], all_goals[6], 1.0)
+
+[likelihood(observations[2], g, 1.0) for g in all_goals]
+
+all_goals[end].Q[3,:]
+
+(4,2) = DPMBIRL.i2s(mdp, observations[4].state)
+(3,5) = DPMBIRL.i2s(mdp, all_goals[12].state)
+
+
+
+plot_state(mdp, observations[4].state)
+
+function plot_state(mdp, state)
+	m = zeros(10,10)
+	m[DPMBIRL.i2s(mdp,state)...] = 1.0
+	heatmap(m')
+end

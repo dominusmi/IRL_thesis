@@ -31,8 +31,11 @@ function likelihood(oᵢ::Observation, g::Goal, η )
 	if g.state == oᵢ.state
 		return 0.
 	end
-	\beta = exp.( η * g.Q[oᵢ.state, :] )
-	exp( η * g.Q[oᵢ.state, oᵢ.action] )
+	β = exp.( η * g.Q[oᵢ.state, :] )
+	# exp( η * g.Q[oᵢ.state, oᵢ.action] )
+	tmp = β[oᵢ.action] * (1 - 5*(maximum(β) - β[oᵢ.action]))
+
+	tmp > 0. ? tmp : 0.
 end
 
 """
@@ -91,7 +94,7 @@ function precomputeQ(mdp, support_space)
 	n_support_states = size(support_space,1)
 	tmp_array= Array{Goal}(n_support_states)
 	tmp_dict = Dict()
-
+	utils = []
 	# Solves mdp for each value
 	for (i,state) in enumerate(support_space)
 		# Prepare mdp with reward at state
@@ -108,6 +111,7 @@ function precomputeQ(mdp, support_space)
 		state_policy = DPMBIRL.solve_mdp(raw_mdp)
 		tmp_dict[state] = Goal(state, state_policy.qmat[1:end-1,:])
 		tmp_array[i] = tmp_dict[state]
+		push!(utils, state_policy.util[1:end-1])
 	end
-	tmp_dict, tmp_array
+	tmp_dict, tmp_array, utils
 end
