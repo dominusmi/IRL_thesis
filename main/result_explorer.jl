@@ -51,7 +51,6 @@ function log2weights(reward_log)
 end
 function plot_reward(reward_log; path_to_save=nothing)
 	fig = Plots.plot( log2reward(reward_log), legend=false, ylim=(-0.05, 0.1) )
-	Plots.plot!( [burn_in, burn_in], [-1., 2.], color="red", linestyle=:dot, linewidth=2)
 	if path_to_save !== nothing
 		println(path_to_save)
 		savefig(path_to_save)
@@ -133,13 +132,17 @@ function summary_statistics(_log, parameters)
 	n_clusters_hist = map(x->x.K, _log[:clusters])
 	# rewards_log = _log[:rewards][burn_in:end]
 	fig_clusters = Plots.plot(n_clusters_hist)
-	c_mean = mean(n_clusters_posterior)
-	c_std = std(n_clusters_posterior)
+	c_mean = mean(n_clusters_hist)
+	c_std = std(n_clusters_hist)
 
 	# Prepare statistic for each possible cluster number
 	summary = Dict(:clusters_posterior => Dict(:mean=>c_mean, :std=>c_std, :fig=>fig_clusters), :rewards_posterior=>Dict())
-	for k in unique(n_clusters_posterior)
-		indeces = find(n_clusters_posterior .== k)
+	for k in unique(n_clusters_hist)
+		indeces = find(n_clusters_hist .== k)
+		@show k, size(indeces,1)
+		if size(indeces,1) < 10
+			continue
+		end
 		r_summaries, r_figs = rewards_summary_statistics(_log[:rewards][indeces], parameters)
 		summary[:rewards_posterior][k] = Dict(:summaries=>r_summaries, :figs=>r_figs)
 	end
