@@ -16,9 +16,9 @@ srand(problem_seed)
 
 n_agents = 2
 traj_per_agent = 20
-iterations = 300
+iterations = 1500
 confidence = 1.0
-burn_in = 50
+burn_in = 300
 ϕ = eye(100)
 χ = Array{MDPHistory}(0)
 mdps = []
@@ -113,22 +113,22 @@ mean(n_clusters_posterior)
 
 summary = summary_statistics(_log, parameters)
 
-extr_reward = summary[:rewards_posterior][3][:summaries][3][:reward_means]
-extr_reward = summary[:rewards_posterior][4][:figs][4]
+extr_reward = summary[:rewards_posterior][2][:summaries][1][:reward_means]
+extr_reward = summary[:rewards_posterior][2][:figs][2]
 
 
-heatmap(reshape(mdps[1].reward_values,(10,10)))
+heatmap(reshape(mdps[2].reward_values,(10,10)))
 heatmap(reshape(extr_reward,(10,10)))
 
-fig_mdp2 = heatmap(reshape(mdps[2].reward_values,(10,10)), legend=false)
+fig_mdp1 = heatmap(reshape(mdps[1].reward_values,(10,10)), legend=false)
 fig_r1 = heatmap(reshape(extr_reward,(10,10)), legend=false)
 
 Plots.plot(fig_mdp1, fig_mdp2, fig_r1, fig_r2, layout=(2,2))
 
-savefig("MDPs and inferred rewards, seed=3, n_agents=2, 300 iterations, 50 burned")
+savefig("MDPs and inferred rewards, seed=3, n_agents=2_20, 1500 iterations, 300 burned")
 
 summary, fig = rewards_summary_statistics(_log[:rewards], parameters)
 fig[1]
 summary
 
-extr_reward = summary[1][:reward_means]
+extr_reward = summary[2][:reward_medians]

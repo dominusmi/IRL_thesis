@@ -102,9 +102,11 @@ end
 """
     Tunes τ in order to get an acceptance rate between 0.4 and 0.8
 """
-function update_τ(τ, t, changed_log)
+function update_τ(τ, τᵒ, t, changed_log)
+    τ = LoggedFloat(τᵒ,t)
     change = 0.
     t>=20 ? println("Last update: $(τ.last_modified), current rate: $(sum(changed_log[t-19:t])/20)") : nothing
+    return τ
     if t >= 20 && t-τ.last_modified >= 5
         acc_rate = sum(changed_log[t-19:t])/20
         if acc_rate < 0.3
@@ -118,7 +120,10 @@ function update_τ(τ, t, changed_log)
             # τ *= 1.1
         end
         if abs(change) > 1e-4
-            τ = LoggedFloat(τ+change, t)
+            proposed_τ = τ+change
+            if proposed_τ < τᵒ * (1.5) && proposed_τ > τᵒ * (0.5)
+                τ = LoggedFloat(τ+change, t)
+            end
             println("Acceptance rate was $acc_rate, changed τ to $(τ.value)")
         end
     end

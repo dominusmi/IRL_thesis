@@ -87,7 +87,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
         path_to_file = prepare_JLD_log_file(path_to_folder, parameters)
     end
 
-    α = τ^2/2
+
 
     γ = mdp.discount_factor
     states = ordered_states(mdp)
@@ -96,6 +96,13 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
     n_actions = size( actions(mdp),1 )
     n_features = size(ϕ,2)
     n_trajectories = size(χ,1)
+
+    # Theoretical optimal τ, used as anchor
+    τᵒ = sqrt( 0.574^2 * n_features^(-1/3))
+    τ = LoggedFloat(τᵒ)
+    α = τ^2/2
+
+
 
     # Precpmputes transition matrix for all actions
     Pₐ = a2transition.(mdp,actions(mdp))
@@ -283,6 +290,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
         elseif t < burn_in
             # push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
             # push!(_log[:rewards], copy.(c.rewards))
+            println("FINAL τ: $(τ)")
         elseif t == burn_in
             # push!(_log[:likelihoods], map(x->x.𝓛, c.rewards))
             # push!(_log[:rewards], copy.(c.rewards))
@@ -297,9 +305,10 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
         # changed_log[t] = changed
         changed_log[t] = changed_counter / size(c.rewards,1)
         # @show changed_log[t]
-        if t < burn_in
-            τ = update_τ(τ, t, changed_log)
-        end
+        # if t < burn_in
+            # τ = update_τ(τ, τᵒ, t, changed_log)
+            # α = τ^2/2
+        # end
 
         # println("Current τ: $τ")
     end
