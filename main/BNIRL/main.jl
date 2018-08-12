@@ -12,11 +12,11 @@ include("helper.jl")
 ### Initialise problem and generate trajectories
 srand(5)
 η, κ = 1.0, 1.0
-mdp, policy = DPMBIRL.generate_diaggridworld(10,10,γ=0.90)
+mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.90)
 # mdp.reward_states = mdp.reward_states[mdp.reward_values .> 0.]
-mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
+# mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
 
-trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(6,2), GridWorldState(1,5)])
+trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(7,2), GridWorldState(8,8), GridWorldState(1,4)])
 observations = traj2obs(mdp, trajectories)
 
 # heatmap(reshape(mdp.reward_values,(10,10)))
@@ -36,12 +36,13 @@ const all_goals = tmp_array
 
 logs = zeros(100,4)
 srand(4)
-goals = [sample(Goal) for i in 1:2]
+goals = [sample(Goal) for i in 1:3]
 
 dbg = [zeros(Integer, 10,10) for i in 1:2]
 
 _log = []
-max_iter = 1000
+max_iter = 5000
+goal_hist = zeros(Integer, max_iter, 3)
 for t in 1:max_iter
 	for (i,curr_goal) in enumerate(goals)
 		assigned_to_goal = (z .== i)
@@ -59,28 +60,35 @@ for t in 1:max_iter
 
 		pos = DPMBIRL.i2s(mdp, state_chosen)
 
-		dbg[1][11-pos[2], pos[1]] += (i==1 ? 1 : -1)
+		# dbg[1][11-pos[2], pos[1]] += (i==1 ? 1 : -1)
 	end
+
+	goal_hist[t,1] = goals[1].state
+	goal_hist[t,2] = goals[2].state
+	goal_hist[t,3] = goals[3].state
 	# @show get_state.(goals)
 	push!(_log, partitioning_loss(goals, observations, z))
 end
-logs[:,4] = _log
-
-likelihood(observations[2], all_goals[6], 1.0)
-
-[likelihood(observations[2], g, 1.0) for g in all_goals]
-
-all_goals[end].Q[3,:]
-
-(4,2) = DPMBIRL.i2s(mdp, observations[4].state)
-(3,5) = DPMBIRL.i2s(mdp, all_goals[12].state)
 
 
+df = DataFrame()
+df[:states] = collect(keys(t))
 
-plot_state(mdp, observations[4].state)
+""" Get a frequency dictionary """
+t = Dict([(i,count(x->x==i,goal_hist[:,3])/max_iter) for i in support_space])
+df[:p_g3] = collect(values(t))
+sort!(df, cols=[:states])
 
-function plot_state(mdp, state)
-	m = zeros(10,10)
-	m[DPMBIRL.i2s(mdp,state)...] = 1.0
-	heatmap(m')
+
+
+Plots.gr()
+labels = string.(collect(keys(t)))
+bar(labels, collect(values(t)), rotation=45, xtickfont = font(5, "Courier"))
+
+
+for key in keys(t)
+	println("$(t[key])")
 end
+
+
+CSV.write("dataframe_3_goals.csv", df)
