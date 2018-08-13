@@ -101,3 +101,33 @@ function rewards_covariance!(σ, _log)
     σ = σ .* [sqrt(cov(rewards[rewards[:,1].!==0.0,i])) for i in 1:n_features]
     σ
 end
+
+
+function compute_potential_reward(θ::RewardFunction, mdp::MDP, update::Symbol, χₖ::Array{MDPHistory}, σ::Matrix{<:AbstractFloat}, τ::AbstractFloat, α::AbstractFloat, glb::Globals)
+    if update == :langevin_rand
+        ϵ = rand(Normal(0,1), glb.n_features)
+        indeces = rand(glb.n_features) .< 0.2
+        ϵ[indeces] = 0.0
+        θ⁻ = θ + α*θ.∇𝓛 + τ*ϵ
+        θ⁻.weights ./= sum(abs.(θ⁻.weights))
+    elseif update == :MH
+        # ϵ = rand(Normal(0,1), n_features)
+        ϵ = rand(MultivariateNormal(σ))
+        θ⁻ = θ + ϵ
+    else
+        θ⁻ = θ + α*θ.∇𝓛
+        θ⁻.weights ./= sum(abs.(θ⁻.weights))
+    end
+    θ⁻.values = values(θ⁻, glb.ϕ)
+
+    # Solve everything for potential new reward
+    θ⁻.π  = solve_mdp(mdp, θ⁻)
+    θ⁻.πᵦ = calπᵦ(mdp, θ⁻.π.qmat, glb)
+    θ⁻.𝓛 = cal𝓛(mdp, θ⁻.πᵦ, χₖ, glb)
+
+    if update !== :MH
+        θ⁻.invT = calInvTransition(mdp, θ⁻.πᵦ, glb.γ)
+        θ⁻.∇𝓛 = cal∇𝓛(mdp, θ⁻.invT, θ⁻.πᵦ,  χₖ, glb)
+    end
+    θ⁻
+end

@@ -169,7 +169,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
         for (k, θ) in enumerate(c.rewards)
             # Get the clusters' trajectories
-            assigned2cluster = assigned_to(clusters, k)
+            assigned2cluster = assigned_to(c, k)
             χₖ = χ[assigned2cluster]
 
             # Update likelihood and gradient to current cluster
@@ -186,31 +186,32 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
             end
 
             # Find potential new reward
-            if update == :langevin_rand
-                ϵ = rand(Normal(0,1), n_features)
-                indeces = rand(n_features) .< 0.2
-                ϵ[indeces] = 0.0
-                θ⁻ = θ + α*θ.∇𝓛 + τ*ϵ
-                θ⁻.weights ./= sum(abs.(θ⁻.weights))
-            elseif update == :MH
-                # ϵ = rand(Normal(0,1), n_features)
-                ϵ = rand(MultivariateNormal(σ))
-                θ⁻ = θ + ϵ
-            else
-                θ⁻ = θ + α*θ.∇𝓛
-                θ⁻.weights ./= sum(abs.(θ⁻.weights))
-            end
-            θ⁻.values = values(θ⁻, glb.ϕ)
-
-            # Solve everything for potential new reward
-            π⁻  = solve_mdp(mdp, θ⁻)
-            πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, glb)
-            𝓛⁻ = cal𝓛(mdp, πᵦ⁻, χₖ, glb)
-
-            if update !== :MH
-                invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
-                ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
-            end
+            θ⁻ = compute_potential_reward(θ, mdp, update, χₖ, σ, τ, α, glb)
+            # if update == :langevin_rand
+            #     ϵ = rand(Normal(0,1), n_features)
+            #     indeces = rand(n_features) .< 0.2
+            #     ϵ[indeces] = 0.0
+            #     θ⁻ = θ + α*θ.∇𝓛 + τ*ϵ
+            #     θ⁻.weights ./= sum(abs.(θ⁻.weights))
+            # elseif update == :MH
+            #     # ϵ = rand(Normal(0,1), n_features)
+            #     ϵ = rand(MultivariateNormal(σ))
+            #     θ⁻ = θ + ϵ
+            # else
+            #     θ⁻ = θ + α*θ.∇𝓛
+            #     θ⁻.weights ./= sum(abs.(θ⁻.weights))
+            # end
+            # θ⁻.values = values(θ⁻, glb.ϕ)
+            #
+            # # Solve everything for potential new reward
+            # π⁻  = solve_mdp(mdp, θ⁻)
+            # πᵦ⁻ = calπᵦ(mdp, π⁻.qmat, glb)
+            # 𝓛⁻ = cal𝓛(mdp, πᵦ⁻, χₖ, glb)
+            #
+            # if update !== :MH
+            #     invT⁻ = calInvTransition(mdp, πᵦ⁻, γ)
+            #     ∇𝓛⁻ = cal∇𝓛(mdp, invT⁻, πᵦ⁻,  χₖ, glb)
+            # end
 
 
             # Do the update
@@ -226,11 +227,11 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 logPrior, ~ = log_prior(θ)
                 logPrior⁻, ~ = log_prior(θ⁻)
                 θ.𝓛 += logPrior
-                𝓛⁻ += logPrior⁻
-                ∇𝓛⁻ = zeros(0)
-                invT⁻ = zeros(0,0)
+                θ⁻.𝓛 += logPrior⁻
+                θ⁻.∇𝓛 = zeros(0)
+                θ⁻.invT = zeros(0,0)
                 # println("log 𝓛: $(@sprintf("%.2f", θ.𝓛)), log 𝓛⁻: $(@sprintf("%.2f", 𝓛⁻))")
-                p = exp(𝓛⁻ - θ.𝓛)
+                p = exp(θ⁻.𝓛 - θ.𝓛)
             elseif update == :langevin || update == :langevin_rand
                 # Use result from Choi
                 logPrior, ∇logPrior = log_prior(θ)
@@ -238,8 +239,8 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
                 θ.𝓛 += logPrior
                 θ.∇𝓛 += ∇logPrior
-                𝓛⁻ += logPrior⁻
-                ∇𝓛⁻ += ∇logPrior⁻
+                θ⁻.𝓛 += logPrior⁻
+                θ⁻.∇𝓛 += ∇logPrior⁻
 
 
                 #### CHOI SHIT ####
@@ -253,13 +254,13 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 # p = a/b
 
                 #### CURRENT WORKING VERSION ####
-                logpd⁻ = proposal_distribution(θ⁻, θ, ∇𝓛⁻, τ)
+                logpd⁻ = proposal_distribution(θ⁻, θ, θ⁻.∇𝓛, τ)
                 logpd = proposal_distribution(θ, θ⁻, θ.∇𝓛, τ)
 
-                p = exp(𝓛⁻-θ.𝓛 + logpd⁻-logpd)
+                p = exp(θ⁻.𝓛-θ.𝓛 + logpd⁻-logpd)
             end
             if p > 1. || rand() < p
-                θ.weights, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ, θ.values = θ⁻.weights, 𝓛⁻, ∇𝓛⁻, invT⁻, π⁻, πᵦ⁻, values(θ⁻, glb.ϕ)
+                θ.weights, θ.𝓛, θ.∇𝓛, θ.invT, θ.π, θ.πᵦ, θ.values = θ⁻.weights, θ⁻.𝓛, θ⁻.∇𝓛, θ⁻.invT, θ⁻.π, θ⁻.πᵦ, values(θ⁻, glb.ϕ)
                 burned += 1
                 changed_counter += 1
                 # avg_changed += 1
