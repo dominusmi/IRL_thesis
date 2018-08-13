@@ -123,10 +123,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
         K = 1
         assignements = fill(1,n_trajectories)
     end
-    # K = 5
-    # K = 1
-    # assignements    = rand(1:K, n_trajectories)
-    # assignements = fill(1,n_trajectories)
 
     N = map(x->sum(assignements .== x), 1:K)
 
@@ -173,7 +169,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
         for (k, θ) in enumerate(c.rewards)
             # Get the clusters' trajectories
-            assigned2cluster = (c.assignements .== k)
+            assigned2cluster = assigned_to(clusters, k)
             χₖ = χ[assigned2cluster]
 
             # Update likelihood and gradient to current cluster
@@ -184,7 +180,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
             elseif update == :MH
                 θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
-            else
+            elseif !use_clusters
                 θ.𝓛 = cal𝓛(mdp, θ.πᵦ, χₖ, glb)
                 θ.∇𝓛 = cal∇𝓛(mdp, θ.invT, θ.πᵦ,  χₖ, glb)
             end
@@ -268,7 +264,6 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
                 changed_counter += 1
                 # avg_changed += 1
             end
-            push!(_log[:acc_prob], p)
         end
 
 

@@ -165,3 +165,6 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, fixed_clust
     # println("There were $(changes/tot) accepted clustering updates")
     updated_clusters_id
 end
+
+
+assigned_to(c::Clusters, k::Integer) = (c.assignements .== k)

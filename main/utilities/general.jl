@@ -55,11 +55,6 @@ function cal𝓛(mdp, πᵦ, χ, glb)
     for (m,trajectory) in enumerate(χ)
         traj_size = size(trajectory.state_hist,1)-1
         𝓛 += trajectory_likelihood(mdp, trajectory, πᵦ, glb)
-        # for (h,state) in enumerate(trajectory.state_hist[1:end-1])
-        #     sₕ = state_index(mdp, state)
-        #     aₕ = action_index(mdp, trajectory.action_hist[h])
-        #     𝓛 += log(πᵦ[sₕ,aₕ])
-        # end
     end
     𝓛
 end
@@ -81,9 +76,6 @@ function cal∇𝓛(mdp, invT, πᵦ, χ, glb::Globals)
             for (h,state) in enumerate(trajectory.state_hist[1:end-1])
                 sₕ = state_index(mdp, state)
                 aₕ = action_index(mdp, trajectory.action_hist[h])
-
-                # 𝓛 += state_action_lh(πᵦ,sₕ,aₕ)
-                # 𝓛 += state_action_lh(πᵦ,sₕ,aₕ) / traj_size
 
                 dl_dθₖ = glb.β * ( dQₖ[sₕ,aₕ] - sum( [ state_action_lh(πᵦ,sₕ,ai⁻) * dQₖ[sₕ,ai⁻] for ai⁻ in glb.actions_i ] ) )
                 ∇𝓛[k] += dl_dθₖ
