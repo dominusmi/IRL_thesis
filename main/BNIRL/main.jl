@@ -34,10 +34,8 @@ tmp_dict, tmp_array, utils = precomputeQ(mdp, support_space)
 const state2goal = tmp_dict
 const all_goals = tmp_array
 
-logs = zeros(100,4)
 srand(4)
 goals = [sample(Goal) for i in 1:3]
-
 dbg = [zeros(Integer, 10,10) for i in 1:2]
 
 _log = []
@@ -69,6 +67,7 @@ for t in 1:max_iter
 	# @show get_state.(goals)
 	push!(_log, partitioning_loss(goals, observations, z))
 end
+
 
 
 df = DataFrame()

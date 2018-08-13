@@ -1,11 +1,14 @@
+import StatsBase: sample
+import Base: ==, hash, isequal, copy, show
+
 # TODO: Check that two observation with same state, diff actions are not "equal"
 immutable Observation
 	state
 	action
 end
-Base.hash(a::Observation, h::UInt) = hash(a.s, hash(a.a, hash(:Observation, h)))
-Base.isequal(a::Observation, b::Observation) = Base.isequal(hash(a), hash(b))
-Base.copy(o::Observation) = Observation(copy(o.s),copy(o.a))
+hash(a::Observation, h::UInt) 			= hash(a.s, hash(a.a, hash(:Observation, h)))
+isequal(a::Observation, b::Observation) = Base.isequal(hash(a), hash(b))
+copy(o::Observation) 					= Observation(copy(o.s),copy(o.a))
 
 immutable Goal
 	state::Integer
@@ -13,6 +16,8 @@ immutable Goal
 end
 ==(g1::Goal,g2::Goal) = g1.state == g2.state
 get_state(g::Goal) = g.state
+show(io::IO, g::Goal) = print(io, "Goal:$(get_state(g))")
+
 """
 	Returns an array states which are part of the observations
 """
@@ -35,8 +40,24 @@ function likelihood(oᵢ::Observation, g::Goal, η )
 	# exp( η * g.Q[oᵢ.state, oᵢ.action] )
 	tmp = β[oᵢ.action] * (1 - 5*(maximum(β) - β[oᵢ.action]))
 
-	tmp > 0. ? tmp : 0.
+	tmp > 0.1 ? tmp : 0.1
 end
+
+"""
+	Calculates the likelihood of several observations given a goal
+"""
+function likelihood(observations::Array{Observation}, g::Goal, η::AbstractFloat)
+	global support_space, state2goal
+	total = 0.
+	for obs in observations
+		for (sᵢ, state) in enumerate(support_space)
+			goal = state2goal[state]
+			total += likelihood(obs, goal, η)
+		end
+	end
+	total
+end
+
 
 """
 	Transforms and MDPHistory array into an array of obsevations
@@ -114,4 +135,31 @@ function precomputeQ(mdp, support_space)
 		push!(utils, state_policy.util[1:end-1])
 	end
 	tmp_dict, tmp_array, utils
+end
+
+"""
+	Given an array, finds the number of times the array elements occur
+"""
+function tally(zd)
+    ret = zeros(Int64, maximum(zd))
+    for k in zd
+        ret[k] += 1
+    end
+    return ret
+end
+
+"""
+	Given a vector of assignements, calculates the CRP probability vector,
+	setting the last element as the probability of instantiating a new cluster
+"""
+function CRP(assignements::Vector{<:Integer}, κ)
+	occurences 	 = tally(assignements)
+	_sum 		 = sum(occurences)
+	denom 		 = _sum-1+κ
+	probs_vector = zeros(size(occurences,1)+1)
+	for i in 1:size(occurences,1)
+		probs_vector[i] = occurences[i] / denom
+	end
+	probs_vector[end] = κ / denom
+	probs_vector
 end
