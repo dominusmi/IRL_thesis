@@ -29,4 +29,16 @@ sizes = [ size(_log[:goals][i],1) for i in 1:4000 ]
 histogram(sizes)
 bar(sizes)
 
-sum( [_log[:goals][sizes .== 2][i][1]==2 for i in 1:1000]) 
+
+indeces = find( x->size(x,1)==3, _log[:goals])
+
+two_obj = zeros(size(indeces,1),3)
+[ two_obj[i,:] = _log[:goals][index] for (i, index) in enumerate(indeces)]
+
+bar(BNIRL.support_space, two_obj[:,1])
+
+vector = []
+for s in BNIRL.support_space
+	push!(vector, count(two_obj[:,3].==s))
+end
+bar(BNIRL.support_space, vector, legend=false)

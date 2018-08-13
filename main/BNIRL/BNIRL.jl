@@ -42,18 +42,24 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
 		# ╩ ╩╚═╝╚═╝╩╚═╝╝╚╝  ╚═╝╚═╝╩ ╩╩═╝╚═╝
 
 		for (i,curr_goal) in enumerate(goals)
+			# In this algorithm, the current goal apparently
+			# has no "say" in the next sampled goal. Maybe could add
+			# a term for that
+
 			# Find the observations assigned to the current goal
 			assigned_to_goal = (z .== i)
-			probs_vector = zeros(n_support_states)
 
 			# Calculate likelihood of observations given a goal
-			probs_vector[i] += likelihood(observations[assigned_to_goal], curr_goal, η)
+			goal_observations = observations[assigned_to_goal]
+			probs_vector = likelihood_vector(goal_observations, goals, η)
 
 			# Use likelihoods to make a probability vector
 			probs_vector /= sum(probs_vector)
+
 			# Pick index and its related state
 			chosen 		  = rand(Multinomial(1,probs_vector))
 			state_chosen  = support_space[findfirst(chosen)]
+
 			# Get the state from the goal
 			goals[i] 	  = state2goal[state_chosen]
 		end
@@ -95,6 +101,7 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
 				push!(goals, potential_g)
 				# info("Pushed cluster")
 			end
+
 			# ╔═╗┌─┐┌─┐┌┬┐  ╔═╗┬─┐┌─┐┌─┐┌─┐┌─┐┌─┐
 			# ╠═╝│ │└─┐ │───╠═╝├┬┘│ ││  ├┤ └─┐└─┐
 			# ╩  └─┘└─┘ ┴   ╩  ┴└─└─┘└─┘└─┘└─┘└─┘

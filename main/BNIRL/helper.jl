@@ -34,7 +34,7 @@ end
 """
 function likelihood(oᵢ::Observation, g::Goal, η )
 	if g.state == oᵢ.state
-		return 0.
+		return 0.01
 	end
 	β = exp.( η * g.Q[oᵢ.state, :] )
 	# exp( η * g.Q[oᵢ.state, oᵢ.action] )
@@ -46,16 +46,16 @@ end
 """
 	Calculates the likelihood of several observations given a goal
 """
-function likelihood(observations::Array{Observation}, g::Goal, η::AbstractFloat)
+function likelihood_vector(observations::Vector{Observation}, goals::Vector{Goal}, η::AbstractFloat)
 	global support_space, state2goal
-	total = 0.
+	llh_vector = zeros(size(support_space,1))
 	for obs in observations
 		for (sᵢ, state) in enumerate(support_space)
 			goal = state2goal[state]
-			total += likelihood(obs, goal, η)
+			llh_vector[sᵢ] += likelihood(obs, goal, η)
 		end
 	end
-	total
+	llh_vector
 end
 
 
