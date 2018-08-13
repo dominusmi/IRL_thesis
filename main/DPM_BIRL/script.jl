@@ -11,14 +11,14 @@ using POMDPToolbox
 # 	end
 # end
 
-problem_seed = 3
+problem_seed = 1
 srand(problem_seed)
 
 n_agents = 2
 traj_per_agent = 20
-iterations = 1500
+iterations = 50
 confidence = 1.0
-burn_in = 300
+burn_in = 1
 ϕ = eye(100)
 χ = Array{MDPHistory}(0)
 mdps = []

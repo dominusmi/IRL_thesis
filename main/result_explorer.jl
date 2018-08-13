@@ -127,11 +127,12 @@ end
 """
 	Does complete summary statistics
 """
-function summary_statistics(_log, parameters)
+function summary_statistics(_log, parameters; figures=true)
 	burn_in = parameters["Burn in"]
 	n_clusters_hist = map(x->x.K, _log[:clusters])
 	# rewards_log = _log[:rewards][burn_in:end]
-	fig_clusters = Plots.plot(n_clusters_hist)
+
+	fig_clusters = figures ? Plots.plot(n_clusters_hist) : nothing
 	c_mean = mean(n_clusters_hist)
 	c_std = std(n_clusters_hist)
 
@@ -144,6 +145,7 @@ function summary_statistics(_log, parameters)
 			continue
 		end
 		r_summaries, r_figs = rewards_summary_statistics(_log[:rewards][indeces], parameters)
+		r_figs = figures ? r_figs : nothing
 		summary[:rewards_posterior][k] = Dict(:summaries=>r_summaries, :figs=>r_figs)
 	end
 	summary

@@ -2,6 +2,7 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 @everywhere include("/home/edoardo/Documents/Masters Work/Dissertation/code/main/DPM_BIRL/DPM_BIRL.jl")
 @everywhere using POMDPToolbox
 @everywhere using JLD
+@everywhere include("/home/edoardo/Documents/Masters Work/Dissertation/code/main/result_explorer.jl")
 
 
 @everywhere function gather_results(seed, n_agents, traj_per_agent, iterations)
@@ -11,7 +12,7 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 
 	iterations = iterations
 	confidence = 1.0
-	burn_in = 200
+	burn_in = 1
 	ϕ = eye(100)
 	χ = Array{MDPHistory}(0)
 	mdps = []
@@ -30,7 +31,7 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 	raw_mdp = copy(mdps[1])
 	raw_mdp.reward_values = Array{Float64}(0)
 
-	ground_truth = Dict(:policy=>policies, :rewards=>map(x->x.reward_values, mdps), :vs=>vs)
+	ground_truth = [mdp.reward_values for mdp in mdps]
 
 	parameters = Dict("Number of agents"=>n_agents, "Number of trajectories per agent"=>traj_per_agent,
 												"Confidence"=>confidence, "Concentration"=>concentration,
@@ -41,24 +42,25 @@ addprocs(Sys.CPU_CORES-1-nprocs())
 
 	logs = []
 	# prepare_log_file(folder, seed)
-	τ = DPMBIRL.LoggedFloat(.8)
+	τ = DPMBIRL.LoggedFloat(.2)
 	c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; τ=τ, β=confidence, κ=concentration,
 								ground_truth = ground_truth, verbose = true, update = :langevin_rand,
-								burn_in=burn_in, use_clusters=use_clusters, seed=seed, path_to_folder="$(pwd())/results", parameters=parameters)
+								burn_in=burn_in, use_clusters=use_clusters, seed=seed, parameters=parameters)
 	parameters["seed"] = seed
-	_log[:ground_truth] = ground_truth
+	summary= summary_statistics(_log, parameters; figures=false)
+	Dict(:summary=>summary, :ground_truth=>ground_truth)
 end
 
 # Changing number trajectories per agent: [10, 20, 40, 80]
 # Changing number of agents: [1,2,4,6,8]
 # changing confidence: [0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 seeds = [1,2,3,4,5]
-iterations = 2000
+iterations = 20
 for n_agents in [2,3,4]
 	for traj_per_agent in [10,20,40]
 		futures = Dict()
 		# Launch all processes
-		for (index, seed) in enumerate(seed)
+		for (index, seed) in enumerate(seeds)
 			futures[seed] = @spawn gather_results(seed, n_agents, traj_per_agent, iterations)
 		end
 		# wait for processes
@@ -67,21 +69,9 @@ for n_agents in [2,3,4]
 		end
 		for seed in seeds
 			println("File saved at: $(pwd())/results/$(seed)_$(n_agents)_$(traj_per_agent).jld")
-			save("$(pwd())/results/$(seed)_$(n_agents)_$(traj_per_agent).jld", "results", futures[seed])
+			@show typeof(futures[seed][:summary]), typeof(futures[seed][:ground_truth])
+			save("$(pwd())/results/summary_$(seed)_$(n_agents)_$(traj_per_agent).jld", "summary", futures[seed][:summary], "ground_truth", futures[seed][:ground_truth])
 			println("Saved results for $(n_agents) agents and $(traj_per_agent) trajectories per agent")
 		end
 	end
 end
-
-
-@everywhere g(x) = x^2
-
-futures = Dict()
-for (i,x) in enumerate([1,2,3,4,5])
-	futures[i] = @spawn g(x)
-end
-
-for key in keys(futures)
-	futures[key] = fetch(futures[key])
-end
-futures
