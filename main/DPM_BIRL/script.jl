@@ -11,14 +11,14 @@ using POMDPToolbox
 # 	end
 # end
 
-problem_seed = 1
+problem_seed = 10
 srand(problem_seed)
 
-n_agents = 2
-traj_per_agent = 20
-iterations = 50
+n_agents = 4
+traj_per_agent = 40
+iterations = 2000
 confidence = 1.0
-burn_in = 1
+burn_in = 500
 ϕ = eye(100)
 χ = Array{MDPHistory}(0)
 mdps = []
@@ -51,7 +51,7 @@ parameters = Dict("Number of agents"=>n_agents, "Number of trajectories per agen
 # folder = prepare_log_folder(pwd()*"/results", parameters)
 
 logs = []
-for seed in 2:2
+for seed in [1,2,4]
 	# prepare_log_file(folder, seed)
 	τ = DPMBIRL.LoggedFloat(.2)
 	c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; τ=τ, β=confidence, κ=concentration,
@@ -110,22 +110,38 @@ n_clusters_posterior = map(x->x.K, _log[:clusters])
 Plots.plot(n_clusters_posterior)
 
 mean(n_clusters_posterior)
+""" Does tally of cluster posterior """
+t = Dict([(i,count(x->x==i,n_clusters_posterior)) for i in unique(n_clusters_posterior)])
+
 
 summary = summary_statistics(_log, parameters)
 
-extr_reward = summary[:rewards_posterior][2][:summaries][1][:reward_means]
+extr_reward = summary[:rewards_posterior][2][:summaries][2][:reward_means]
 extr_reward = summary[:rewards_posterior][2][:figs][2]
 
 
 heatmap(reshape(mdps[2].reward_values,(10,10)))
 heatmap(reshape(extr_reward,(10,10)))
 
-fig_mdp1 = heatmap(reshape(mdps[1].reward_values,(10,10)), legend=false)
-fig_r1 = heatmap(reshape(extr_reward,(10,10)), legend=false)
+plot_mdp(mdp) = heatmap(reshape(mdp.reward_values,(10,10)), legend=false)
+plot_r(r) = heatmap(reshape(r,(10,10)), legend=false)
+
+function truth_comparison_plot(mdps, summary, k)
+	mdp_figs = Array{Any}(k)
+	r_figs = Array{Any}(k)
+
+	for i in 1:k
+		mdp_figs[i] = plot_mdp(mdps[i])
+		r = summary[:rewards_posterior][k][:summaries][i][:reward_means]
+		r_figs[i] = plot_r(r)
+	end
+	Plots.plot(mdp_figs..., r_figs..., layout=(2,k))
+end
+fig = truth_comparison_plot(mdps, summary, 2)
 
 Plots.plot(fig_mdp1, fig_mdp2, fig_r1, fig_r2, layout=(2,2))
 
-savefig("MDPs and inferred rewards, seed=3, n_agents=2_20, 1500 iterations, 300 burned")
+savefig("MDPs and inferred rewards, seed=1, n_agents=2_20, 2000 iterations, 500 burned")
 
 summary, fig = rewards_summary_statistics(_log[:rewards], parameters)
 fig[1]
