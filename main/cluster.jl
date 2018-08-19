@@ -116,7 +116,7 @@ function update_clusters!(clusters::Clusters, mdp::MDP, κ::Float64, fixed_clust
             continue
         elseif cₘ⁻ == clusters.K+1
             # If new cluster, sample new reward
-            r⁻ = sample(RewardFunction, glb.n_features)
+            r⁻ = sample(DPMBIRLReward, glb.n_features)
             r⁻.values = values(r⁻, glb.ϕ)
             new_cluster = true
         else

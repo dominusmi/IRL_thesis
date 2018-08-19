@@ -128,7 +128,7 @@ function DPM_BIRL(mdp, ϕ, χ, iterations; τ=0.1, κ=1., β=0.5, ground_truth =
 
 
     # Prepare reward functions
-    θs = [sample(RewardFunction, n_features) for i in 1:K]
+    θs = [sample(DPMBIRLReward, n_features) for i in 1:K]
     for (k,θ) in enumerate(θs)
         assigned2cluster = (assignements .== k)
         χₖ = χ[assigned2cluster]

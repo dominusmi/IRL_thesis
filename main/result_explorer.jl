@@ -98,7 +98,7 @@ function rewards_summary_statistics(rewards, parameters; save_to=nothing)
 end
 
 
-function summary_statistics(rewards::Vector{DPMBIRL.RewardFunction})
+function summary_statistics(rewards::Vector{<:DPMBIRL.RewardFunction})
 	# Transforms array of rewards into matrix
 	rewards_matrix = log2reward(rewards)
 	# Summary statistcs
