@@ -1,5 +1,5 @@
 import StatsBase: sample
-import Base: ==, hash, isequal, copy, show
+import Base: ==, hash, isequal, copy, show, deleteat!
 using Plots
 
 immutable Observation
@@ -21,7 +21,6 @@ show(io::IO, g::Goal) = print(io, "Goal:$(get_state(g))")
 immutable Globals
 	n_states::Integer
 	n_actions::Integer
-	n_observations::Integer
 	support_space::Array{<:Integer}
 	n_support_states::Integer
 	ψ::AbstractFloat
@@ -32,15 +31,22 @@ immutable Globals
 end
 
 mutable struct Clusters
-	assignements
-	G
-	Z
+	K::Integer
+	N::Array{<:Integer}
+	assignements::Array{<:Integer}
+	G::Array{Goal}
+	Z::Array{Any}
+	ids::Array{<:Integer}
+end
+
+function copy(c::Clusters)
+	Clusters(c.K, copy(c.N), copy(c.assignements), copy.(c.G), copy.(c.Z), copy(c.ids))
 end
 
 """
 	Returns an array states which are part of the observations
 """
-function getSupportSpace(observations::Array{Observation})
+function getSupportSpace(observations::Vector{Observation})
 	support = Array{Int64}(0)
 	for obs in observations
 		push!(support, obs.state)
@@ -263,7 +269,7 @@ function reassign!(obs::Observation, obs_idx, z, goals, glb; use_clusters=true)
 end
 
 
-function update_cluster!(clusters)
+function update_cluster!(clusters, m, glb)
 	new_cluster = false
 	cₘ   = clusters.assignements[m] # Current assignement
 	cₘ⁻  = sample(clusters,m,κ,fixed_clusters)     # Potential new assignement
@@ -271,37 +277,38 @@ function update_cluster!(clusters)
 	if cₘ⁻ == cₘ
 		return
 	elseif cₘ⁻ == clusters.K+1
-		# If new cluster, sample new goal
-		r⁻ = sample(DPMBIRLReward, glb.n_features)
-		r⁻.values = values(r⁻, glb.ϕ)
+		# If new cluster, sample new goals, conserve number of goals
+		n_goals = size( unique(clusters.assignements[cₘ]),1 )
+		gs⁻ = [sample(Goal, glb) for i in 1:n_goals]
 		new_cluster = true
 	else
-		# Otherwise "load" current reward function
-		r⁻ = clusters.rewards[cₘ⁻]
+		# Otherwise "load" goal
+		g⁻ = glb.all_goals[cₘ⁻]
 	end
 
 	# Calculate likelihood
-	# TODO: record old likelihood so don't have to recalculate
-	𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].πᵦ, glb)
-	𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻, glb)
+	𝓛, 𝓛⁻ = 0., 0.
+	for (i, obs) in enumerate(trajectory[m])
+		curr_ass = clusters.Z[cₘ][i]
+		curr_goal = clusters.G[cₘ][curr_ass]
+		𝓛  += likelihood(obs, curr_goal, glb)
+		𝓛⁻ += likelihood(obs, gs⁻[curr_ass], glb)
+	end
 	accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
+
 	# Update if accepted
 	if accept
 		changes += 1
-		# Update likelihood of trajectory
-		# clusters.𝓛[m] = 𝓛⁻
-
 		# Update cluster and reward assignements
 		if new_cluster
 			# Add new cluster
-			update_reward!(r⁻, mdp, [glb.χ[m]], glb)
-			push!(clusters.rewards, r⁻)
-			push!(clusters.N,1)
+			push!(clusters.G, gs⁻)
+			push!(clusters.Z, copy.(clusters.Z[cₘ]))
+			push!(clusters.N, 1)
 			push!(clusters.ids, clusters.K+1)
 			clusters.K += 1
 			clusters.N[cₘ] -= 1
 			clusters.assignements[m] = cₘ⁻
-
 		else
 			# Update clusters to new assignement
 			clusters.N[cₘ] -= 1
@@ -339,4 +346,16 @@ function postprocess!(z, goals)
 		# TODO: do this, but less hacky
 		pop!(goals)
 	end
+end
+
+
+function deleteat!(c::Clusters, index::Integer)
+    deleteat!(c.N, index)
+    deleteat!(c.Z, index)
+	deleteat!(c.G, index)
+    deleteat!(c.ids, index)
+    c.K -= 1
+    temp = c.assignements .> index
+    c.assignements[temp] -= 1
+    return
 end

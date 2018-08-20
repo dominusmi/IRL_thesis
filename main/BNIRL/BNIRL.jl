@@ -10,7 +10,7 @@ export main, traj2obs, Observation
 
 include("../DPM_BIRL/DPM_BIRL.jl")
 include("helper.jl")
-
+include("MABNIRL.jl")
 
 function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500, use_assignements=true, ground_truth=nothing, punishment=5, use_clusters=false, n_goals=0 )
 	srand(seed)
@@ -40,7 +40,7 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500, use_
 	all_goals  = tmp_array
 
 	# Setup general variables
-	const glb = Globals(n_states, n_actions, n_observations, support_space,
+	const glb = Globals(n_states, n_actions, support_space,
 					n_support_states, ψ, state2goal, all_goals, η, κ)
 
 	if !use_assignements
@@ -81,13 +81,9 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500, use_
 
 		# Re-assign observations
 		tmp_use_clusters = use_clusters
-		for rep in 1:2
+		for rep in 1:5
 		for (i,obs) in enumerate(observations)
 			reassign!(obs, i, z, goals, glb, use_clusters=tmp_use_clusters)
-
-			# ╔═╗┌─┐┌─┐┌┬┐  ╔═╗┬─┐┌─┐┌─┐┌─┐┌─┐┌─┐
-			# ╠═╝│ │└─┐ │───╠═╝├┬┘│ ││  ├┤ └─┐└─┐
-			# ╩  └─┘└─┘ ┴   ╩  ┴└─└─┘└─┘└─┘└─┘└─┘
 			postprocess!(z, goals)
 
 			if !use_clusters

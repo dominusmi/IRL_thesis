@@ -22,17 +22,25 @@ pyplot()
 	# mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
 	# punishment = exp(inv(1-γ^2))
 	punishment = inv(1-γ^2)
-	trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(1,8), GridWorldState(8,3)])
+	trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(1,8), GridWorldState(10,10)])
 	observations = BNIRL.traj2obs(mdp, trajectories)
 
-	_log, glb = BNIRL.main(mdp, observations, η, κ; max_iter=100000, burn_in=50000, use_assignements=true, ground_truth=z, punishment=punishment, use_clusters=true, n_goals=2)
+	_log, glb = BNIRL.main(mdp, observations, η, κ; max_iter=5_000, burn_in=2_000, use_assignements=true, ground_truth=z, punishment=punishment, use_clusters=true, n_goals=2)
 
 	plot_partition_sizes(_log[:goals])
-	fig_1 = goals_plot(_log[:goals],2,1, glb)
-	fig_2 = goals_plot(_log[:goals],2,2, glb)
-	fig_z1 = z_plot(_log[:z],2,1)
-	fig_z2 = z_plot(_log[:z],2,2)
-	fig = Plots.plot(fig_1, fig_2, fig_z1, fig_z2, layout=(2,2))
+	n_goals = 3
+	fig_g, fig_z = [], []
+	for i in 1:n_goals
+		push!(fig_g, goals_plot(_log[:goals],n_goals,i, glb))
+		# fig_2 = goals_plot(_log[:goals],3,2, glb)
+		# fig_3 = goals_plot(_log[:goals],3,3, glb)
+
+		push!(fig_z, z_plot(_log[:z],n_goals,i))
+		# fig_z2 = z_plot(_log[:z],3,2)
+		# fig_z3 = z_plot(_log[:z],3,3)
+	end
+
+	fig = Plots.plot(fig_g...,fig_z..., layout=(2,n_goals))
 # end
 
 
@@ -48,7 +56,7 @@ end
 function goals_plot(goals, n_goals, goal_id, glb)
 	indeces = find( x->size(x,1)==n_goals, goals)
 
-	objs = zeros(size(indeces,1),2)
+	objs = zeros(size(indeces,1),n_goals)
 	[ objs[i,:] = goals[index] for (i, index) in enumerate(indeces)]
 
 
@@ -56,7 +64,7 @@ function goals_plot(goals, n_goals, goal_id, glb)
 	for s in glb.support_space
 		push!(vector, count(objs[:,goal_id].==s))
 	end
-	bar(glb.support_space, vector, legend=false, xticks=0:10:101)
+	bar(glb.support_space, vector, legend=false, xticks=0:10:101, bar_width=1.)
 end
 
 
