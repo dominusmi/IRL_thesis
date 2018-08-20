@@ -13,10 +13,11 @@ function MABNIRL(mdp, trajectories, η, κ; seed=1, max_iter=5e4, burn_in=500, u
 
 	n_states 			= size(states(mdp),1)-1
 	n_actions 			= size(actions(mdp),1)
-	n_observations 		= size(observations,1)
-	support_space 		= getSupportSpace(observations)
+	n_observations 		= size(trajectories,1)
+	support_space 		= getSupportSpace(trajectories)
 	n_support_states 	= size(support_space,1)
 	ψ					= punishment
+	n_trajectories		= size(trajectories,1)
 
 	println("Punishment: $ψ")
 
@@ -27,13 +28,24 @@ function MABNIRL(mdp, trajectories, η, κ; seed=1, max_iter=5e4, burn_in=500, u
 
 	# Setup general variables
 	const glb = Globals(n_states, n_actions, support_space,
-					n_support_states, ψ, state2goal, all_goals, η, κ)
+						n_support_states, ψ, state2goal, all_goals, η, κ)
 
+
+	clusters = Clusters(n_trajectories,
+						fill(1, n_trajectories),
+						collect(1:n_trajectories),
+						Vector{Vector{Goal}}(0),
+						zeros(Integer, n_trajectories),
+						collect(1:n_trajectories))
 
 	# TODO: rewrite this for multi-agent
 	if use_assignements
-		goals = [sample(Goal, glb) for i in 1:3]
-		z = rand([1,2,3], n_observations)
+		# Begin with one cluster per trajectory
+		for i in 1:n_trajectories
+			n_obs = size(trajectories[i],1)
+			push!(clusters.G, [sample(Goal, glb) for i in 1:3])
+			clusters.Z[i] = rand([1,2,3], n_obs)
+		end
 	else
 		z = ground_truth
 		n_goals = size(unique(z),1)

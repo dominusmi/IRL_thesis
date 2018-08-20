@@ -34,7 +34,7 @@ mutable struct Clusters
 	K::Integer
 	N::Array{<:Integer}
 	assignements::Array{<:Integer}
-	G::Array{Goal}
+	G::Vector{Vector{Goal}}
 	Z::Array{Any}
 	ids::Array{<:Integer}
 end
@@ -50,6 +50,17 @@ function getSupportSpace(observations::Vector{Observation})
 	support = Array{Int64}(0)
 	for obs in observations
 		push!(support, obs.state)
+	end
+	unique(support)
+end
+
+"""
+	Returns an array states which are part of the observations
+"""
+function getSupportSpace(trajectories::Vector{Vector{Observation}})
+	support = Array{Integer}(0)
+	for traj in trajectories
+		push!(support, getSupportSpace(traj)...)
 	end
 	unique(support)
 end

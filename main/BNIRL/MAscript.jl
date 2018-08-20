@@ -22,4 +22,7 @@ punishment = inv(1-γ^2)
 trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(1,8), GridWorldState(10,10)])
 observations = BNIRL.traj2obs(mdp, trajectories)
 
-_log, glb = BNIRL.MABNIRL(mdp, observations, η, κ; max_iter=5_000, burn_in=2_000, use_assignements=true, ground_truth=z, punishment=punishment, use_clusters=true, n_goals=2)
+trajectories = [observations]
+
+_log, glb = BNIRL.MABNIRL(mdp, trajectories, η, κ; max_iter=5_000, burn_in=2_000,
+				use_assignements=true, ground_truth=z, punishment=punishment, use_clusters=true, n_goals=2)
