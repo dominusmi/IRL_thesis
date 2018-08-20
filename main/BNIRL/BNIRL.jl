@@ -65,7 +65,13 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500, use_
 		# ╩ ╩╚═╝╚═╝╩╚═╝╝╚╝  ╚═╝╚═╝╩ ╩╩═╝╚═╝
 
 		for (i,curr_goal) in enumerate(goals)
-			goals[i]    = resample(goals, i, z, observations, glb)
+			# Find the observations assigned to the current goal
+			assigned_to_goal = (z .== goal_idx)
+
+			# Calculate likelihood of observations given a goal
+			goal_observations = observations[assigned_to_goal]
+
+			goals[i] = resample(goals, goal_observations, glb)
 		end
 
 		if !use_assignements

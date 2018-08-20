@@ -219,16 +219,11 @@ function CRP(c::Clusters)
     indmax(rand(Dirichlet(αs),1))
 end
 
-function resample(goals::Array{Goal}, goal_idx, z, observations, glb)
+function resample(goals::Array{Goal}, goal_observations, glb)
 	# In this algorithm, the current goal apparently
 	# has no "say" in the next sampled goal. Maybe could add
 	# a term for that
 
-	# Find the observations assigned to the current goal
-	assigned_to_goal = (z .== goal_idx)
-
-	# Calculate likelihood of observations given a goal
-	goal_observations = observations[assigned_to_goal]
 	probs_vector = likelihood_vector(goal_observations, goals, glb)
 
 	# Use likelihoods to make a probability vector
@@ -303,7 +298,6 @@ function update_cluster!(clusters, m, glb)
 		if new_cluster
 			# Add new cluster
 			push!(clusters.G, gs⁻)
-			push!(clusters.Z, copy.(clusters.Z[cₘ]))
 			push!(clusters.N, 1)
 			push!(clusters.ids, clusters.K+1)
 			clusters.K += 1
@@ -351,7 +345,6 @@ end
 
 function deleteat!(c::Clusters, index::Integer)
     deleteat!(c.N, index)
-    deleteat!(c.Z, index)
 	deleteat!(c.G, index)
     deleteat!(c.ids, index)
     c.K -= 1

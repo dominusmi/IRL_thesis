@@ -53,14 +53,25 @@ function MABNIRL(mdp, trajectories, η, κ; seed=1, max_iter=5e4, burn_in=500, u
 			update_cluster!(clusters, m)
 		end
 
-		for c in 1:clusters.N
+		for cₘ in 1:clusters.N
+
+			assigned_to_cluster = find(clusters.assignements.==cₘ)
+
 			# ╔═╗╔═╗╔═╗╦╔═╗╔╗╔  ╔═╗╔═╗╔═╗╦  ╔═╗
 			# ╠═╣╚═╗╚═╗║║ ╦║║║  ║ ╦║ ║╠═╣║  ╚═╗
 			# ╩ ╩╚═╝╚═╝╩╚═╝╝╚╝  ╚═╝╚═╝╩ ╩╩═╝╚═╝
 			goals = clusters.G[c]
-			z = clusters.Z[c]
+			zs = clusters.Z[assigned_to_cluster]
 			for (i,curr_goal) in enumerate(goals)
-				goals[i]    = resample(goals, i, z, observations, glb)
+				# Finds observations from all the cluster trajectories
+				# which are assigned to "curr_goal"
+				goal_observations = []
+				for (j,traj) in enumerate(trajectories[assigned_to_cluster])
+					tmp_indeces = zs[j] .== i
+					vcat(goal_observations, traj[tmp_indeces])
+				end
+				# Sample goal
+				goals[i] = resample(goals, goal_observations, glb)
 			end
 
 
@@ -68,16 +79,14 @@ function MABNIRL(mdp, trajectories, η, κ; seed=1, max_iter=5e4, burn_in=500, u
 			# ╠═╣╚═╗╚═╗║║ ╦║║║  ║ ║╠╩╗╚═╗║╣ ╠╦╝╚╗╔╝╠═╣ ║ ║║ ║║║║╚═╗
 			# ╩ ╩╚═╝╚═╝╩╚═╝╝╚╝  ╚═╝╚═╝╚═╝╚═╝╩╚═ ╚╝ ╩ ╩ ╩ ╩╚═╝╝╚╝╚═╝
 			# Re-assign observations
-			tmp_use_clusters = use_clusters
-			for (i,obs) in enumerate(observations)
-				reassign!(obs, i, z, goals, glb, use_clusters=tmp_use_clusters)
-				postprocess!(z, goals)
-
-				if !use_clusters
-					if size(goals,1) !== n_goals
-						tmp_use_clusters = true
-					else
-						tmp_use_clusters = false
+			for rep in 1:5
+				for (i,z) in enumerate(zs)
+					# Get the trajectory corresponding to the assignement vector
+					observations = trajectories[ assigned_to_cluster[i] ]
+					# Loop over observations
+					for (i,obs) in enumerate(observations)
+						reassign!(obs, i, z, goals, glb, use_clusters=use_clusters)
+						postprocess!(z, goals)
 					end
 				end
 			end
