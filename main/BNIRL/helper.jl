@@ -1,7 +1,7 @@
 import StatsBase: sample
 import Base: ==, hash, isequal, copy, show
 
-# TODO: Check that two observation with same state, diff actions are not "equal"
+
 immutable Observation
 	state
 	action
@@ -18,6 +18,17 @@ end
 get_state(g::Goal) = g.state
 show(io::IO, g::Goal) = print(io, "Goal:$(get_state(g))")
 
+immutable Globals
+	n_states::Integer
+	n_actions::Integer
+	n_observations::Integer
+	support_space::Array{<:Integer}
+	n_support_states::Integer
+	ψ::AbstractFloat
+	state2goal::Dict
+	all_goals::Array{Goal}
+end
+
 """
 	Returns an array states which are part of the observations
 """
@@ -32,27 +43,28 @@ end
 """
 	Calculates the likelihood of an observation given a goal
 """
-function likelihood(oᵢ::Observation, g::Goal, η )
+function likelihood(oᵢ::Observation, g::Goal, η::AbstractFloat, glb::Globals)
+	ψ = glb.ψ
 	if g.state == oᵢ.state
 		return 0.01
 	end
 	β = exp.( η * g.Q[oᵢ.state, :] )
-	# exp( η * g.Q[oᵢ.state, oᵢ.action] )
-	tmp = β[oᵢ.action] * (1 - 5*(maximum(β) - β[oᵢ.action]))
+	# β = η * g.Q[oᵢ.state, :]
+	tmp = β[oᵢ.action] * (1 - ψ*(maximum(β) - β[oᵢ.action]))
 
-	tmp > 0.1 ? tmp : 0.1
+	tmp > 0.01 ? tmp : 0.01
 end
 
 """
 	Calculates the likelihood of several observations given a goal
 """
-function likelihood_vector(observations::Vector{Observation}, goals::Vector{Goal}, η::AbstractFloat)
-	global support_space, state2goal
+function likelihood_vector(observations::Vector{Observation}, goals::Vector{Goal}, η::AbstractFloat, glb::Globals)
+	support_space, state2goal = glb.support_space, glb.state2goal
 	llh_vector = zeros(size(support_space,1))
 	for obs in observations
 		for (sᵢ, state) in enumerate(support_space)
 			goal = state2goal[state]
-			llh_vector[sᵢ] += likelihood(obs, goal, η)
+			llh_vector[sᵢ] += likelihood(obs, goal, η, glb)
 		end
 	end
 	llh_vector
@@ -86,8 +98,8 @@ end
 """
 	Returns a random goal from the support space
 """
-function sample(::Type{Goal})
-	global support_space, state2goal
+function sample(::Type{Goal}, glb::Globals)
+	support_space, state2goal = glb.support_space, glb.state2goal
 	state = rand(support_space)
 	state2goal[state]
 end

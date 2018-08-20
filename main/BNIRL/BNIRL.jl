@@ -12,31 +12,45 @@ include("../DPM_BIRL/DPM_BIRL.jl")
 include("helper.jl")
 
 
-function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
+function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500, use_assignements=true, ground_truth=nothing, punishment=5)
 	srand(seed)
 
+	if !use_assignements
+		@assert ground_truth !== nothing "Ground truth not given"
+	end
 
-	# Setup general variables
-	global const n_states 			= size(states(mdp),1)-1
-	global const n_actions 			= size(actions(mdp),1)
-	global const n_observations 	= size(observations,1)
-	global const support_space 		= getSupportSpace(observations)
-	global const n_support_states 	= size(support_space,1)
+	n_states 			= size(states(mdp),1)-1
+	n_actions 			= size(actions(mdp),1)
+	n_observations 		= size(observations,1)
+	support_space 		= getSupportSpace(observations)
+	n_support_states 	= size(support_space,1)
+	ψ					= punishment
+
+	println("Punishment: $ψ")
 
 	### Precompute all Q-values and their πᵦ
 	tmp_dict, tmp_array, utils = precomputeQ(mdp, support_space)
-	global const state2goal = tmp_dict
-	global const all_goals  = tmp_array
+	state2goal = tmp_dict
+	all_goals  = tmp_array
 
-	goals = [sample(Goal) for i in 1:3]
-	z = rand([1,2,3], n_observations)
+	# Setup general variables
+	const glb = Globals(n_states, n_actions, n_observations, support_space,
+					n_support_states, ψ, state2goal, all_goals)
 
+	if use_assignements
+		goals = [sample(Goal, glb) for i in 1:3]
+		z = rand([1,2,3], n_observations)
+	else
+		z = ground_truth
+		n_goals = size(unique(z),1)
+		goals =  [sample(Goal, glb) for i in 1:n_goals]
+	end
 
 	_log = Dict(:z=>[], :goals=>[])
 	goal_hist = zeros(Integer, max_iter, 3)
 	for t in 1:max_iter
-		# Re-sample goals
-		t%10 == 0 ? println("Iteration $t") : nothing
+		t%100 == 0 ? println("Iteration $t") : nothing
+
 		# ╔═╗╔═╗╔═╗╦╔═╗╔╗╔  ╔═╗╔═╗╔═╗╦  ╔═╗
 		# ╠═╣╚═╗╚═╗║║ ╦║║║  ║ ╦║ ║╠═╣║  ╚═╗
 		# ╩ ╩╚═╝╚═╝╩╚═╝╝╚╝  ╚═╝╚═╝╩ ╩╩═╝╚═╝
@@ -51,7 +65,7 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
 
 			# Calculate likelihood of observations given a goal
 			goal_observations = observations[assigned_to_goal]
-			probs_vector = likelihood_vector(goal_observations, goals, η)
+			probs_vector = likelihood_vector(goal_observations, goals, η, glb)
 
 			# Use likelihoods to make a probability vector
 			probs_vector /= sum(probs_vector)
@@ -61,11 +75,16 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
 			state_chosen  = support_space[findfirst(chosen)]
 
 			# Get the state from the goal
-			goals[i] 	  = state2goal[state_chosen]
+			goal_chosen = state2goal[state_chosen]
+			goals[i]    = goal_chosen
 		end
 
-		# @show get_state.(goals)
-		# push!(_log, partitioning_loss(goals, observations, z))
+		if !use_assignements
+			if t > burn_in
+				push!(_log[:goals], get_state.(goals))
+			end
+			continue
+		end
 
 		# ╔═╗╔═╗╔═╗╦╔═╗╔╗╔  ╔═╗╔╗ ╔═╗╔═╗╦═╗╦  ╦╔═╗╔╦╗╦╔═╗╔╗╔╔═╗
 		# ╠═╣╚═╗╚═╗║║ ╦║║║  ║ ║╠╩╗╚═╗║╣ ╠╦╝╚╗╔╝╠═╣ ║ ║║ ║║║║╚═╗
@@ -82,7 +101,7 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
 			# @assert size(CRP_probs,1) == size(llh_probs,1)
 
 			# Sample a potential new goal
-			potential_g = sample(Goal)
+			potential_g = sample(Goal, glb)
 
 			# Calculate likelihood of observation per goal
 			for (j,g) in enumerate(goals)
@@ -135,7 +154,7 @@ function main(mdp, observations, η, κ; seed=1, max_iter=5e4, burn_in=500)
 			push!(_log[:goals], get_state.(goals))
 		end
 	end
-	_log
+	_log, glb
 end
 
 end

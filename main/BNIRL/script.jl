@@ -2,43 +2,74 @@ using POMDPs
 using POMDPModels
 using Distributions
 using POMDPToolbox
-
+using Plots
 include("../DPM_BIRL/DPM_BIRL.jl")
 include("BNIRL.jl")
 # reload("BNIRL")
+include("BNIRL.jl")
 using BNIRL
+pyplot()
 
 ### Initialise problem and generate trajectories
+# anim = @animate for γ in 0.4:0.05:0.99
+# anim = @animate for punishment in 10*(2:2:8)
+	γ = 0.7
+	println("γ: $γ")
+	srand(5)
+	η, κ = 1.0, 1.0
+	mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=γ)
+	# mdp.reward_states = mdp.reward_states[mdp.reward_values .> 0.]
+	# mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
+	punishment = exp(inv(1-γ^2))
+	trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(8,8), GridWorldState(1,4)])
+	observations = BNIRL.traj2obs(mdp, trajectories)
+
+	_log, glb = BNIRL.main(mdp, observations, η, κ; max_iter=4000, burn_in=1000, use_assignements=false, ground_truth=z, punishment=punishment)
+
+	plot_partition_sizes(_log[:goals])
+	fig_1 = goals_plot(_log[:goals],2,1, glb)
+	fig_2 = goals_plot(_log[:goals],2,2, glb)
+	fig = Plots.plot(fig_1, fig_2, layout=(1,2))
+# end
+
+
+gif(anim, fps=2)
+
+function plot_partition_sizes(goals)
+	sizes = [ size(goals[i],1) for i in 1:size(goals,1) ]
+	histogram(sizes)
+end
+
+function goals_plot(goals, n_goals, goal_id, glb)
+	indeces = find( x->size(x,1)==n_goals, goals)
+
+	objs = zeros(size(indeces,1),2)
+	[ objs[i,:] = goals[index] for (i, index) in enumerate(indeces)]
+
+
+	vector = []
+	for s in glb.support_space
+		push!(vector, count(objs[:,goal_id].==s))
+	end
+	bar(glb.support_space, vector, legend=false, xticks=0:10:101)
+end
+
+
 srand(5)
-η, κ = 1.0, 0.1
-mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.90)
-# mdp.reward_states = mdp.reward_states[mdp.reward_values .> 0.]
-# mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
-
-trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(8,8), GridWorldState(1,4)])
+γ = 0.5
+η, κ = 1.0, 1.0
+mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=γ)
+trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,5), [GridWorldState(2,4), GridWorldState(2,6)])
 observations = BNIRL.traj2obs(mdp, trajectories)
-
-_log = BNIRL.main(mdp, observations, η, κ; max_iter=5000, burn_in=1000)
-
-zs = zeros(Integer, 4000, 25)
-for i in 1:4000
-	zs[i,:] = _log[:z][i]
-end
-sizes = [ size(_log[:goals][i],1) for i in 1:4000 ]
-
-histogram(sizes)
-bar(sizes)
+support_space = BNIRL.getSupportSpace(observations)
+_goals, _, _utils = BNIRL.precomputeQ(mdp, support_space)
+_goals[52].Q[42,:]
 
 
-indeces = find( x->size(x,1)==3, _log[:goals])
 
-two_obj = zeros(size(indeces,1),3)
-[ two_obj[i,:] = _log[:goals][index] for (i, index) in enumerate(indeces)]
 
-bar(BNIRL.support_space, two_obj[:,1])
+heatmap(reshape(mdp.reward_values,(10,10)))
+heatmap(reshape(_utils[1],(10,10)))
 
-vector = []
-for s in BNIRL.support_space
-	push!(vector, count(two_obj[:,3].==s))
-end
-bar(BNIRL.support_space, vector, legend=false)
+
+_goals

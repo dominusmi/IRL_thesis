@@ -82,8 +82,6 @@ end
 function accept_proposition(::Type{Likelihood}, new_l::AbstractFloat, l::AbstractFloat)
     P = exp(new_l-l)
     r = rand()
-    # print("($(@sprintf("%.2f", new_l)), $(@sprintf("%.2f", l)), $(@sprintf("%.2f", P)), $(@sprintf("%.2f", r))),")
-
     P > 1.0 ? true : r > P
 end
 
