@@ -13,24 +13,29 @@ pyplot()
 ### Initialise problem and generate trajectories
 # anim = @animate for γ in 0.4:0.05:0.99
 # anim = @animate for punishment in 10*(2:2:8)
-	γ = 0.7
+	γ = 0.95
 	println("γ: $γ")
 	srand(5)
-	η, κ = 1.0, 1.0
-	mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=γ)
+	η, κ = 1.0, 0.1
+	mdp, policy = DPMBIRL.generate_diaggridworld(10,10,γ=γ)
 	# mdp.reward_states = mdp.reward_states[mdp.reward_values .> 0.]
 	# mdp.reward_values = [mdp.reward_values[i] > 0. ? 1.0 : 0.0 for i in 1:100]
-	punishment = exp(inv(1-γ^2))
-	trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(8,8), GridWorldState(1,4)])
+	# punishment = exp(inv(1-γ^2))
+	punishment = inv(1-γ^2)
+	trajectories, z = DPMBIRL.generate_subgoals_trajectories(mdp, GridWorldState(2,1), [GridWorldState(1,8), GridWorldState(8,3)])
 	observations = BNIRL.traj2obs(mdp, trajectories)
 
-	_log, glb = BNIRL.main(mdp, observations, η, κ; max_iter=4000, burn_in=1000, use_assignements=false, ground_truth=z, punishment=punishment)
+	_log, glb = BNIRL.main(mdp, observations, η, κ; max_iter=100000, burn_in=50000, use_assignements=true, ground_truth=z, punishment=punishment, use_clusters=true, n_goals=2)
 
 	plot_partition_sizes(_log[:goals])
 	fig_1 = goals_plot(_log[:goals],2,1, glb)
 	fig_2 = goals_plot(_log[:goals],2,2, glb)
-	fig = Plots.plot(fig_1, fig_2, layout=(1,2))
+	fig_z1 = z_plot(_log[:z],2,1)
+	fig_z2 = z_plot(_log[:z],2,2)
+	fig = Plots.plot(fig_1, fig_2, fig_z1, fig_z2, layout=(2,2))
 # end
+
+
 
 
 gif(anim, fps=2)
@@ -55,6 +60,18 @@ function goals_plot(goals, n_goals, goal_id, glb)
 end
 
 
+function z_plot(z, n_goals, goal_id)
+	n_obs = size(z[1],1)
+	indeces = find( x->size(unique(x),1)==n_goals, z)
+	objs = zeros(size(indeces,1),n_obs)
+
+	for (i,ass) in enumerate(z[indeces])
+		objs[i,find(ass.==goal_id)] += 1
+	end
+	_sum = sum(objs,1)
+	bar(collect(1:n_obs), _sum[1,:])
+end
+
 srand(5)
 γ = 0.5
 η, κ = 1.0, 1.0
@@ -73,3 +90,18 @@ heatmap(reshape(_utils[1],(10,10)))
 
 
 _goals
+
+
+function plot_observations(mdp,	O; colours=nothing)
+	fig = Plots.plot([], [], xlim=(0.5, mdp.size_x+0.5), ylim=(0.5, mdp.size_y+0.5),
+							xticks=1:mdp.size_x, yticks=1:mdp.size_y)
+
+	n_obs = size(O,1)
+	for i in 1:n_obs-1
+		s1, s2 = DPMBIRL.i2s(mdp, O[i].state), DPMBIRL.i2s(mdp, O[i+1].state)
+		x = [s1[1], s2[1]]
+		y = [s1[2], s2[2]]
+		Plots.plot!(x,y, arrow=true, legend=false)
+	end
+	fig
+end

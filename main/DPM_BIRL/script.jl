@@ -12,19 +12,20 @@ using POMDPToolbox
 # end
 
 problem_seed = 10
-srand(problem_seed)
+srand(1)
 
-n_agents = 4
-traj_per_agent = 40
-iterations = 2000
+n_agents = 1
+traj_per_agent = 20
+iterations = 500
 confidence = 1.0
-burn_in = 500
+burn_in = 100
 ϕ = eye(100)
 χ = Array{MDPHistory}(0)
+transitionₚ = 1.0
 mdps = []
 policies = []
 for i in 1:n_agents
-	mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9)
+	mdp, policy = DPMBIRL.generate_gridworld(10,10,γ=0.9,transitionₚ=transitionₚ)
 	χₐ = DPMBIRL.generate_trajectories(mdp, policy, traj_per_agent)
 	push!(χ, χₐ...)
 	push!(mdps, mdp)
@@ -51,7 +52,7 @@ parameters = Dict("Number of agents"=>n_agents, "Number of trajectories per agen
 # folder = prepare_log_folder(pwd()*"/results", parameters)
 
 logs = []
-for seed in [1,2,4]
+for seed in [1]
 	# prepare_log_file(folder, seed)
 	τ = DPMBIRL.LoggedFloat(.2)
 	c, _log = DPMBIRL.DPM_BIRL(raw_mdp, ϕ, χ, iterations; τ=τ, β=confidence, κ=concentration,
@@ -116,7 +117,7 @@ t = Dict([(i,count(x->x==i,n_clusters_posterior)) for i in unique(n_clusters_pos
 
 summary = summary_statistics(_log, parameters)
 
-extr_reward = summary[:rewards_posterior][2][:summaries][2][:reward_means]
+extr_reward = summary[:rewards_posterior][1][:summaries][1][:reward_means]
 extr_reward = summary[:rewards_posterior][2][:figs][2]
 
 
@@ -137,7 +138,7 @@ function truth_comparison_plot(mdps, summary, k)
 	end
 	Plots.plot(mdp_figs..., r_figs..., layout=(2,k))
 end
-fig = truth_comparison_plot(mdps, summary, 2)
+fig = truth_comparison_plot(mdps, summary, 1)
 
 Plots.plot(fig_mdp1, fig_mdp2, fig_r1, fig_r2, layout=(2,2))
 

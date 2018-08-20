@@ -1,6 +1,6 @@
 import StatsBase: sample
 import Base: ==, hash, isequal, copy, show
-
+using Plots
 
 immutable Observation
 	state
@@ -27,6 +27,14 @@ immutable Globals
 	ψ::AbstractFloat
 	state2goal::Dict
 	all_goals::Array{Goal}
+	η::AbstractFloat
+	κ::AbstractFloat
+end
+
+mutable struct Clusters
+	assignements
+	G
+	Z
 end
 
 """
@@ -43,8 +51,8 @@ end
 """
 	Calculates the likelihood of an observation given a goal
 """
-function likelihood(oᵢ::Observation, g::Goal, η::AbstractFloat, glb::Globals)
-	ψ = glb.ψ
+function likelihood(oᵢ::Observation, g::Goal, glb::Globals)
+	ψ, η = glb.ψ, glb.η
 	if g.state == oᵢ.state
 		return 0.01
 	end
@@ -58,13 +66,13 @@ end
 """
 	Calculates the likelihood of several observations given a goal
 """
-function likelihood_vector(observations::Vector{Observation}, goals::Vector{Goal}, η::AbstractFloat, glb::Globals)
-	support_space, state2goal = glb.support_space, glb.state2goal
+function likelihood_vector(observations::Vector{Observation}, goals::Vector{Goal}, glb::Globals)
+	support_space, state2goal, η = glb.support_space, glb.state2goal, glb.η
 	llh_vector = zeros(size(support_space,1))
 	for obs in observations
 		for (sᵢ, state) in enumerate(support_space)
 			goal = state2goal[state]
-			llh_vector[sᵢ] += likelihood(obs, goal, η, glb)
+			llh_vector[sᵢ] += likelihood(obs, goal, glb)
 		end
 	end
 	llh_vector
@@ -164,14 +172,171 @@ end
 	Given a vector of assignements, calculates the CRP probability vector,
 	setting the last element as the probability of instantiating a new cluster
 """
-function CRP(assignements::Vector{<:Integer}, κ)
+function CRP(assignements::Vector{<:Integer}, κ; use_clusters=true)
 	occurences 	 = tally(assignements)
 	_sum 		 = sum(occurences)
-	denom 		 = _sum-1+κ
-	probs_vector = zeros(size(occurences,1)+1)
+	if use_clusters
+		denom = _sum-1+κ
+		probs_size = size(occurences,1)+1
+	else
+		denom = _sum-1
+		probs_size = size(occurences,1)
+	end
+	probs_vector = zeros( probs_size )
 	for i in 1:size(occurences,1)
 		probs_vector[i] = occurences[i] / denom
 	end
-	probs_vector[end] = κ / denom
+	use_clusters ? probs_vector[end] = κ / denom : nothing
 	probs_vector
+end
+
+
+function CRP(c::Clusters)
+	if iszero(fixed_clusters)
+        αs = zeros(c.K+1)
+    else
+        αs = zeros(c.K)
+    end
+    ∑N = size(c.assignements,1)
+    cₘ = c.assignements[m]
+    for k in 1:c.K
+        Nₖ = c.N[k]
+        if k == cₘ
+            Nₖ -= 1
+            Nₖ = (Nₖ == 0 ? 1e-5 : Nₖ)  # Dir doesn't like 0, so we set something very small
+        end
+        αs[k] = Nₖ / (α-1+∑N)
+    end
+    if iszero(fixed_clusters)
+        αs[end] = α / (α-1+∑N)
+    end
+    indmax(rand(Dirichlet(αs),1))
+end
+
+function resample(goals::Array{Goal}, goal_idx, z, observations, glb)
+	# In this algorithm, the current goal apparently
+	# has no "say" in the next sampled goal. Maybe could add
+	# a term for that
+
+	# Find the observations assigned to the current goal
+	assigned_to_goal = (z .== goal_idx)
+
+	# Calculate likelihood of observations given a goal
+	goal_observations = observations[assigned_to_goal]
+	probs_vector = likelihood_vector(goal_observations, goals, glb)
+
+	# Use likelihoods to make a probability vector
+	probs_vector /= sum(probs_vector)
+
+	# Pick index and its related state
+	chosen 		  = rand(Multinomial(1,probs_vector))
+	state_chosen  = glb.support_space[findfirst(chosen)]
+	goal_chosen   = glb.state2goal[state_chosen]
+end
+
+function reassign!(obs::Observation, obs_idx, z, goals, glb; use_clusters=true)
+	# Get the CRP probabilities
+	CRP_probs = CRP(z, glb.κ, use_clusters=use_clusters)
+	probs_size = use_clusters ? size(goals,1)+1 : size(goals,1)
+	llh_probs = zeros(probs_size)
+
+	# Sample a potential new goal
+	potential_g = sample(Goal, glb)
+
+	# Calculate likelihood of observation per goal
+	for (j,g) in enumerate(goals)
+		llh_probs[j] = likelihood(obs, g, glb)
+	end
+
+	use_clusters ? llh_probs[end] = likelihood(obs, potential_g, glb) : nothing
+
+	# Put probabilities together and normalise
+	probs_vector  = llh_probs .* CRP_probs
+	probs_vector /= sum(probs_vector)
+
+	# Sample new assignement
+	chosen = findfirst(rand(Multinomial(1,probs_vector)))
+	z[obs_idx] = chosen
+	if chosen == size(goals,1)+1 && use_clusters
+		push!(goals, potential_g)
+	end
+end
+
+
+function update_cluster!(clusters)
+	new_cluster = false
+	cₘ   = clusters.assignements[m] # Current assignement
+	cₘ⁻  = sample(clusters,m,κ,fixed_clusters)     # Potential new assignement
+
+	if cₘ⁻ == cₘ
+		return
+	elseif cₘ⁻ == clusters.K+1
+		# If new cluster, sample new goal
+		r⁻ = sample(DPMBIRLReward, glb.n_features)
+		r⁻.values = values(r⁻, glb.ϕ)
+		new_cluster = true
+	else
+		# Otherwise "load" current reward function
+		r⁻ = clusters.rewards[cₘ⁻]
+	end
+
+	# Calculate likelihood
+	# TODO: record old likelihood so don't have to recalculate
+	𝓛      = trajectory_likelihood(mdp, glb.χ[m], clusters.rewards[cₘ].πᵦ, glb)
+	𝓛⁻     = trajectory_likelihood(mdp, glb.χ[m], r⁻, glb)
+	accept = accept_proposition(Likelihood, 𝓛⁻, 𝓛)
+	# Update if accepted
+	if accept
+		changes += 1
+		# Update likelihood of trajectory
+		# clusters.𝓛[m] = 𝓛⁻
+
+		# Update cluster and reward assignements
+		if new_cluster
+			# Add new cluster
+			update_reward!(r⁻, mdp, [glb.χ[m]], glb)
+			push!(clusters.rewards, r⁻)
+			push!(clusters.N,1)
+			push!(clusters.ids, clusters.K+1)
+			clusters.K += 1
+			clusters.N[cₘ] -= 1
+			clusters.assignements[m] = cₘ⁻
+
+		else
+			# Update clusters to new assignement
+			clusters.N[cₘ] -= 1
+			clusters.N[cₘ⁻] += 1
+			clusters.assignements[m] = cₘ⁻
+			push!(updated_clusters_id, clusters.ids[cₘ], clusters.ids[cₘ⁻])
+		end
+	end
+	# Remove empty clusters
+	if (to_remove = findfirst(x->x==0, clusters.N))>0
+		deleteat!(clusters, to_remove)
+		if to_remove ∈ updated_clusters_id
+			delete!(updated_clusters_id,to_remove)
+		end
+	end
+end
+
+
+function postprocess!(z, goals)
+	# Remove empty assignements and their goals
+	tally_z = tally(z)
+	# @show tally_z
+	for i in reverse(1:size(tally_z,1))
+		if tally_z[i] == 0
+			z[ z .> i ] -= 1
+			deleteat!(goals, i)
+			# info("Deleted partition $i")
+		end
+	end
+	if size(tally(z),1) != size(goals,1)
+		# The only explanation after thorough review is that
+		# the last cluster went from 1 to 0 observations assigned
+		# and therefore was out of reach of the tally which stops at the highest
+		# cluster. Therefore, simply remove the last goal
+		# TODO: do this, but less hacky
+		pop!(goals)
+	end
 end
